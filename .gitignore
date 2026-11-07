@@ -1,0 +1,9 @@
+# KiCad local history is its own git repo
+.history/
+
+# KiCad lock, cache and backup files
+~*.lck
+*.lck
+fp-info-cache
+_autosave-*
+*-backups/
