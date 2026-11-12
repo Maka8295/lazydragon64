@@ -9,14 +9,16 @@
 #   CASE_OUT   output folder (default: this case folder)
 #   CASE_MODE  "stagger" (default) applies the Stagger edit; "regress" rebuilds
 #              the unedited original, which is how the method was checked
+#   CASE_CLERESTORY  "1" also builds the clerestory (windowed) version (default: off)
 #   CASE_LOG   log file (default: none)
-import os, math, time
+import os, math, time, json
 import FreeCAD as App, Part, Mesh
 from FreeCAD import Vector as V
 
 SRC = os.environ.get("CASE_SRC", os.path.expanduser("~/PCBs/Lucca58/case"))
 OUT = os.environ.get("CASE_OUT", os.path.expanduser("~/PCBs/lazydragon64/case-new-outline"))
 MODE = os.environ.get("CASE_MODE", "stagger")
+CLERESTORY = os.environ.get("CASE_CLERESTORY", "0") == "1"
 LOG = open(os.environ.get("CASE_LOG", os.devnull), "w")
 def log(*a):
     LOG.write(" ".join(str(x) for x in a) + "\n"); LOG.flush()
@@ -36,6 +38,31 @@ X_BLOCK = 110.0                # case-frame x below which standoffs are in the b
 # rigidly because col 3 stayed put.
 NEW_STANDOFFS = [(93.9, 92.25), (93.9, 111.25), (93.9, 130.4),
                  (112.9, 92.25), (112.9, 111.25), (112.9, 130.4)]
+
+# ---- lazydragon64 mounting (2026-11-11), stagger mode only ------------------
+# Corne Cherry v4 style, replacing all 15 original M2.5 standoffs. Four M2 x 7.5 mm
+# female-female spacers stand on the floor (top at Z_FLOOR), pass through the PCB's
+# 5.0 mm clearance holes H1-H4 without touching it, and carry the 1.6 mm FR4 plate:
+# floor-to-plate-underside is 2.5 + 1.6 + 3.4 = 7.5 mm, the same as the Corne. One
+# M2 x 5 screw goes up through the floor into each spacer and one down through the
+# plate. The PCB hangs from the switches, so nothing touches it from below. The floor
+# is counterbored to leave 2.0 mm under each spacer, like the Corne's 2.0 mm floor, so
+# the M2 x 5 screws get the same 3 mm of thread. The spacer must be a 3.5 mm hex
+# (4.04 across corners) or round <= 4.0 mm: parts sit 2.25 mm from each hole on both
+# PCB faces. Positions in KiCad mm.
+SCREWS = [(94.005, 72.565), (93.995, 112.995), (170.205, 72.565), (170.215, 132.145)]
+SCREW_D, CBORE_D, FLOOR_UNDER_SPACER = 2.2, 4.4, 2.0
+# Optional PCB-support pillars (CASE_PILLARS=1; the Corne has none). Each is placed
+# where a 3 mm pillar clears every pad, courtyard and socket body on both faces by 0.3 mm.
+PILLARS = [(94.0, 54.0), (94.0, 92.25), (94.0, 130.25), (113.0, 73.25), (113.0, 111.25),
+           (132.0, 53.0), (131.25, 88.0), (131.5, 126.5), (151.25, 53.0), (151.25, 72.25),
+           (151.25, 110.25), (170.25, 55.5), (170.25, 93.75), (170.25, 112.75), (185.5, 70.25),
+           (189.25, 113.75), (196.5, 81.0), (204.5, 108.5), (195.5, 136.0)]
+PILLAR_D = 3.0
+if os.environ.get("CASE_PILLARS", "0") != "1":
+    PILLARS = []
+# J1 (USB-C link) is on the key side, under the raised RP2040-Zero, so both plugs
+# enter through the original notch and nothing hangs below the PCB there.
 
 # ---- Clerestory parameters (same as the original build) ------------------
 W, PITCH, MARGIN = 5.6, 8.0, 1.2
@@ -137,21 +164,9 @@ if MODE == "stagger":
     corner = [(x, y + TL) for x, y in I2[i_s:i_c + 1]]
     I = [(I2[0][0], I2[0][1] + MCU)] + step + I2[1:i_e + 1] + corner + I2[i_c + 1:i_r] + [(x, y + MCU) for x, y in I2[i_r:]]
     log("inner verts ->", len(I))
-    # standoffs
-    block = sorted(range(len(HEX)), key=lambda k: centre(HEX[k]))
-    block = [k for k in block if centre(HEX[k])[0] < X_BLOCK]
-    assert len(block) == len(NEW_STANDOFFS), len(block)
-    def nearest(lst, c):
-        return min(range(len(lst)), key=lambda k: math.hypot(centre(lst[k])[0] - c[0], centre(lst[k])[1] - c[1]))
-    targets = [(px + TX, -py + TY) for px, py in NEW_STANDOFFS]
-    for k, t in zip(block, targets):
-        c = centre(HEX[k])
-        h = nearest(HOLE, c); r = nearest(RING, c)
-        dx, dy = t[0] - c[0], t[1] - c[1]
-        log("standoff", [round(v, 3) for v in c], "->", [round(v, 3) for v in t])
-        HEX[k] = [(x + dx, y + dy) for x, y in HEX[k]]
-        HOLE[h] = [(x + dx, y + dy) for x, y in HOLE[h]]
-        RING[r] = [(x + dx, y + dy) for x, y in RING[r]]
+    # The original standoffs are replaced by SCREWS/PILLARS (see base()). The
+    # 2026-11-07 build moved six of them to NEW_STANDOFFS instead; see git history.
+    HEX, HOLE, RING = [], [], []
 
 # ---- build ---------------------------------------------------------------
 def face(poly):
@@ -160,9 +175,22 @@ def face(poly):
 def prism(poly, z0, z1):
     s = face(poly).extrude(V(0, 0, z1 - z0)); s.translate(V(0, 0, z0)); return s
 
+def cyl(d, x, y, z0, z1):                    # x, y in KiCad mm
+    return Part.makeCylinder(d / 2, z1 - z0, V(x + TX, -y + TY, z0))
+def hexagon(af, x, y):                       # flats facing +-x, like the original pockets
+    R = af / math.sqrt(3); cx, cy = x + TX, -y + TY
+    return [(cx + R * math.cos(math.radians(a)), cy + R * math.sin(math.radians(a))) for a in range(30, 360, 60)]
+
 def base():
     s = prism(O, Z_BOTTOM, Z_RIM)
     s = s.cut(prism(I, Z_FLOOR, Z_RIM + 1))
+    if MODE == "stagger":
+        if PILLARS:   # embedded 0.3 into the floor so nothing is coplanar
+            s = s.fuse([cyl(PILLAR_D, x, y, Z_FLOOR - 0.3, Z_RING) for x, y in PILLARS]).removeSplitter()
+        s = s.cut([cyl(SCREW_D, x, y, Z_BOTTOM - 1, Z_FLOOR + 0.5) for x, y in SCREWS])
+        z_cb = Z_FLOOR - FLOOR_UNDER_SPACER
+        s = s.cut([cyl(CBORE_D, x, y, Z_BOTTOM - 1, z_cb) for x, y in SCREWS])
+        return s.removeSplitter()
     # rings are embedded 0.3 into the floor so nothing is coplanar
     s = s.fuse([prism(r, Z_FLOOR - 0.3, Z_RING) for r in RING]).removeSplitter()
     s = s.cut([prism(h, Z_HEXTOP - 0.1, Z_RING + 0.5) for h in HOLE])
@@ -258,9 +286,293 @@ def clerestory(solid):
     log("clerestory valid", res.isValid(), "solids", len(res.Solids), "vol", round(res.Volume, 2), "bbox", res.BoundBox)
     return res, len(windows)
 
-t0 = time.time()
-cler, nwin = clerestory(plain)
-log("clerestory time", round(time.time() - t0, 1))
+variants = [("", plain)]
+if CLERESTORY:
+    t0 = time.time()
+    cler, nwin = clerestory(plain)
+    log("clerestory time", round(time.time() - t0, 1))
+    variants.append((" Clerestory", cler))
+else:
+    nwin = 0
+
+# ---- decorations (2026-11-11), stagger mode -----------------------------------
+# Bottom: the Lazy Dragon drawing (~/Pictures/dragon.jpg, traced into dragon_art.json
+# by trace_art.py at 112.5 mm wide with 1 px of line thickening) is engraved ART_DEPTH
+# into the bottom face. It reads upright when the half is turned over front-to-back,
+# and its placement keeps every counterbore on both halves 3.6 mm from the ink.
+# Front: TEXT in Cloister Black, raised TEXT_RAISE on the longest straight run of the
+# user-facing wall. Each half gets its own unmirrored copies so both read correctly.
+# CASE_IVY_ONLY=1 (with CASE_IVY=1): the vine is the only decoration. No text, no bottom
+# art, and no plaque gap, so the vine runs all the way round and stops only at the USB notch.
+IVY_ONLY = os.environ.get("CASE_IVY_ONLY", "0") == "1"
+DECOR = os.environ.get("CASE_DECOR", "1") == "1" and MODE == "stagger" and not IVY_ONLY
+ART_JSON = os.environ.get("CASE_ART", os.path.expanduser("~/PCBs/lazydragon64/case-new-outline/dragon_art.json"))
+ART_CENTER, ART_DEPTH, ART_CLEAR = (142.0, 102.0), 0.6, 3.6     # KiCad mm
+TEXT, FONT = "Lazy Dragon", os.path.expanduser("~/.local/share/fonts/CloisterBlack.ttf")
+TEXT_H, TEXT_RAISE, TEXT_EMBED = 12.0, 0.6, 0.3
+
+def inside_O(x, y):
+    c = False
+    for i in range(len(O)):
+        (x1, y1), (x2, y2) = O[i], O[i - 1]
+        if (y1 > y) != (y2 > y) and x < (x2 - x1) * (y - y1) / (y2 - y1) + x1: c = not c
+    return c
+def front_run():
+    # longest straight run of the outline whose outside faces the user (-y); collinear
+    # edges split by a vertex count as one run
+    runs = []
+    for i in range(len(O)):
+        (x1, y1), (x2, y2) = O[i], O[(i + 1) % len(O)]
+        if abs(y2 - y1) < 1e-3 and abs(x2 - x1) > 1e-4 and inside_O((x1 + x2) / 2, y1 + 0.5):
+            runs.append([min(x1, x2), max(x1, x2), round(y1, 3)])
+    runs.sort(key=lambda r: (r[2], r[0])); merged = []
+    for r in runs:
+        if merged and merged[-1][2] == r[2] and abs(merged[-1][1] - r[0]) < 1e-3:
+            merged[-1][1] = max(merged[-1][1], r[1])
+        else:
+            merged.append(r)
+    return max(merged, key=lambda r: r[1] - r[0])
+def glyph_faces(size):
+    # font outlines as fine polygons: OCC booleans with the spline outlines gave invalid solids
+    faces = []
+    for ws in Part.makeWireString(TEXT, FONT, size, 0):
+        if not ws: continue
+        polys = []
+        for w in ws:
+            pts = w.discretize(Deflection=0.01)
+            if (pts[0] - pts[-1]).Length > 1e-6: pts.append(pts[0])
+            polys.append(Part.makePolygon(pts))
+        faces.append(Part.makeFace(polys, "Part::FaceMakerBullseye"))
+    return faces
+
+def art_tool(side):
+    d = json.load(open(ART_JSON))
+    cx, cy = side * (ART_CENTER[0] + TX), -ART_CENTER[1] + TY
+    wires = []
+    for lp in d["loops"]:
+        pts = [V(cx + u, cy - v, 0) for u, v in lp]
+        wires.append(Part.makePolygon(pts + [pts[0]]))
+    face = Part.makeFace(wires, "Part::FaceMakerBullseye")
+    tool = face.extrude(V(0, 0, ART_DEPTH + 0.5)); tool.translate(V(0, 0, Z_BOTTOM - 0.5))
+    clear = [Part.makeCylinder(ART_CLEAR, 5, V(side * (x + TX), -y + TY, Z_BOTTOM - 1)) for x, y in SCREWS]
+    return tool.cut(clear)
+
+def text_solid(side):
+    x0, x1, yw = front_run()
+    if side < 0: x0, x1 = -x1, -x0
+    bb = Part.makeCompound(glyph_faces(10.0)).BoundBox
+    k = min(TEXT_H / bb.YLength, 0.85 * (x1 - x0) / bb.XLength)
+    faces = glyph_faces(10.0 * k)
+    bb = Part.makeCompound(faces).BoundBox
+    # rotate +90 about x: local x -> case +x (reads left to right from the front),
+    # local y -> +z, extrusion (local +z) -> -y, i.e. out of the wall
+    pl = App.Placement(V((x0 + x1) / 2, yw + TEXT_EMBED, (Z_BOTTOM + Z_RIM) / 2), App.Rotation(V(1, 0, 0), 90))
+    sols = []
+    for f in faces:
+        s = f.extrude(V(0, 0, TEXT_RAISE + TEXT_EMBED))
+        s.translate(V(-bb.Center.x, -bb.Center.y, 0))
+        s.Placement = pl.multiply(s.Placement)
+        sols.append(s)
+    sol = Part.makeCompound(sols)
+    log("text side", side, "run x", round(x0, 2), round(x1, 2), "y", round(yw, 3), "scale", round(k, 3), "size", sol.BoundBox)
+    return sol
+
+def decorate(shape, side):
+    t0 = time.time()
+    s = shape.cut(art_tool(side)).removeSplitter()
+    s = s.fuse(text_solid(side).Solids).removeSplitter()
+    log("decorated side", side, "valid", s.isValid(), "solids", len(s.Solids), "t", round(time.time() - t0, 1))
+    return s
+
+# ---- ivy wrap (2026-11-11): CASE_IVY=1 writes separate " Ivy" files ------------
+# One repeat of ~/Downloads/Ornamental Ivy Vine Divider.png, traced by trace_art.py into
+# ivy_border.json (image columns 24-2138, plus 4 px of overlap), is raised IVY_RAISE as a
+# band centred on the outer wall. Exactly IVY_N repeats fit the outer perimeter, so the
+# vine joins up where it wraps round. The outline is unrolled by arc length, and each
+# wall facet gets the part of the band over it, extruded along its own normal. A
+# rounded plaque around the front text and the USB notch are left clear. The pattern is
+# shifted along the wall so those cuts cross bare stem rather than leaves. The right
+# half gets the mirror image, so its plaque lands on its own text.
+IVY = os.environ.get("CASE_IVY", "0") == "1" and (DECOR or (IVY_ONLY and MODE == "stagger"))
+IVY_PHASE = os.environ.get("CASE_IVY_PHASE")   # force the vine's phase (mm), e.g. to match another build
+IVY_FILL = os.environ.get("CASE_IVY_FILL", "1") == "1"
+IVY_JSON = os.environ.get("CASE_IVY_ART", os.path.expanduser("~/PCBs/lazydragon64/case-new-outline/ivy_border.json"))
+IVY_N, IVY_RAISE, IVY_EMBED = 6, 0.8, 0.3
+IVY_MAX_BAND = float(os.environ.get("CASE_IVY_MAX_BAND", "14.5"))   # mm; alternating tiles: band = 2 x reach from the stem
+IVY_NAME = os.environ.get("CASE_IVY_NAME", " Ivy")
+PLAQUE_PAD, PLAQUE_R, NOTCH_PAD = (3.0, 1.5), 2.0, 1.0      # mm
+# 2026-11-11 second version: CASE_IVY_ART=ivy_minimalist.json CASE_IVY_NAME=" Ivy Minimalist".
+# That tile (make_ivy_tile.py, ~/Downloads/Minimalist Ivy Vine Divider.png) alternates
+# normal and upside-down copies, and its zones end only on bare stem (cut_ok).
+
+def unrolled():
+    pts = [V(x, y, 0) for x, y in O]; n = len(pts); edges = []; s = 0.0
+    for i in range(n):
+        a, b = pts[i], pts[(i + 1) % n]; L = (b - a).Length
+        if L < 1e-6: continue
+        t = (b - a) * (1.0 / L); nrm = V(t.y, -t.x, 0); mid = (a + b) * 0.5
+        if inside_O(mid.x + nrm.x * 0.05, mid.y + nrm.y * 0.05): nrm = nrm * -1
+        edges.append((a, t, nrm, s, s + L)); s += L
+    return edges, s
+def s_of(edges, x, y):
+    p = V(x, y, 0); best = None
+    for a, t, nrm, s0, s1 in edges:
+        u = max(0.0, min(s1 - s0, (p - a).dot(t))); d = (a + t * u - p).Length
+        if best is None or d < best[0]: best = (d, s0 + u)
+    return best[1]
+
+def ivy_pieces():
+    t0 = time.time()
+    d = json.load(open(IVY_JSON)); edges, P = unrolled()
+    per = d["period_px"]; zc = (Z_BOTTOM + Z_RIM) / 2
+    ALT = d.get("alternate", False)            # make_ivy_tile.py: copies alternate normal / 180 deg
+    if ALT:   # fewest copies (even, so the alternation closes round the wrap) that fit IVY_MAX_BAND
+        N = next(n for n in range(2, 40, 2) if 2 * d["half_height_px"] * (P / n) / per <= IVY_MAX_BAND)
+        L = P / N; k = L / per; Hb = 2 * d["half_height_px"] * k
+    else:
+        N = IVY_N; L = P / N; k = L / per; Hb = d["height_px"] * k
+    # clear zones in s: the front text and the USB notch
+    ytop = max(y for x, y in O)
+    sc, sd = sorted((s_of(edges, NOTCH[0], ytop), s_of(edges, NOTCH[1], ytop)))
+    need = [(sc - NOTCH_PAD, sd + NOTCH_PAD)]
+    sa = sb = None
+    if not IVY_ONLY:
+        tb = text_solid(+1).BoundBox
+        sa, sb = sorted((s_of(edges, tb.XMin, tb.YMax), s_of(edges, tb.XMax, tb.YMax)))
+        need.insert(0, (sa - PLAQUE_PAD[0], sb + PLAQUE_PAD[0]))
+    def orient(j): return ALT and j % 2 == 1   # rotated copy
+    if "cut_ok" in d:
+        # End the vine only on bare-stem columns: each zone edge moves outwards to the
+        # nearest column marked cut_ok, so no leaf is sliced and no fragment is left behind.
+        ok = d["cut_ok"]
+        def ok_at(s, ph):
+            j = math.floor((s - ph) / L); u = (s - ph - j * L) / k
+            col = int(round(per - u if orient(j) else u))
+            return ok[min(max(col, 0), per)]
+        def grow(s, ph, direction):
+            for i in range(int(20.0 / k)):
+                if ok_at(s + direction * i * k, ph): return i * k
+            return None
+        def zones_for(ph):
+            out = []
+            for lo, hi in need:
+                a, b = grow(lo, ph, -1), grow(hi, ph, +1)
+                if a is None or b is None: return None
+                out.append((lo - a, hi + b, a + b))
+            return out
+        span = 2 * L if ALT else L
+        phases = [float(IVY_PHASE)] if IVY_PHASE else [i * 0.25 for i in range(int(span / 0.25))]
+        cands = [(sum(z[2] for z in zs), ph, zs) for ph in phases for zs in [zones_for(ph)] if zs]
+        if not cands: raise SystemExit("no bare-stem cut for the zones at phase(s) %s" % phases[:4])
+        extra, phase, zs = min(cands)
+        zones = [(lo, hi) for lo, hi, _ in zs]
+        log("ivy cut at bare stem: phase", phase, "zones grown by", round(extra, 2), "mm in total")
+    else:
+        # older border: put the cuts where the pattern has the least ink, +-0.6 mm
+        ink = d["column_ink"]; win = max(1, int(0.6 / k))
+        cuts = [c for z in need for c in z]
+        def cost(ph):
+            return sum(max(ink[(int(((sx - ph) % L) / k) + j) % per] for j in range(-win, win + 1)) for sx in cuts)
+        phase = min((i * 0.25 for i in range(int(L / 0.25))), key=cost)
+        zones = need
+    log("ivy N", N, "L", round(L, 3), "band", round(Hb, 2), "k mm/px", round(k, 5), "phase", phase,
+        "zones", [(round(a, 1), round(b, 1)) for a, b in zones])
+    tiles = []
+    for j in range(-2, N + 2):
+        s0 = phase + j * L
+        for lp in d["loops"]:
+            if orient(j): q = [V(s0 + (per - u) * k, zc - v * k, 0) for u, v in lp]
+            else: q = [V(s0 + u * k, zc + v * k, 0) for u, v in lp]
+            tiles.append(Part.Face(Part.makePolygon(q + [q[0]])))
+    band = tiles[0].fuse(tiles[1:]).removeSplitter() if len(tiles) > 1 else tiles[0]
+    # zones repeated one wrap either side, since the tiles run past both ends of [0, P]
+    clear = [Part.makePlane(hi - lo, Hb + 4, V(lo + w, zc - Hb / 2 - 2, 0)) for lo, hi in zones for w in (-P, 0, P)]
+    band = band.cut(clear).removeSplitter()
+    # Floating check over one full turn that starts inside the first zone, so no element
+    # straddles the window's ends: every piece must be a whole stretch of vine between
+    # two zones (one piece per zone), and none may be a scrap.
+    m = (zones[0][0] + zones[0][1]) / 2
+    turn = band.common(Part.makePlane(P, Hb + 4, V(m, zc - Hb / 2 - 2, 0)))
+    areas = sorted((round(f.Area, 1) for f in turn.Faces), reverse=True)
+    log("ivy band pieces over one turn (mm2):", areas, "expected", len(zones))
+    if len(areas) != len(zones):
+        log("WARNING: ivy pattern has", len(areas), "separate pieces, expected", len(zones))
+    if os.environ.get("CASE_IVY_DRY") == "1":   # dump the unrolled band and stop
+        json.dump({"P": P, "zc": zc, "Hb": Hb, "zones": zones, "text_s": [sa, sb], "notch_s": [sc, sd],
+                   "start": m, "faces": [[[(p.x, p.y) for p in w.discretize(Deflection=0.02)] for w in f.Wires] for f in turn.Faces]},
+                  open(os.path.join(OUT, "ivy_band.json"), "w"))
+        raise SystemExit("ivy dry run")
+    pieces = []
+    n = len(edges)
+    # Filled joints (2026-11-13). Each wall facet's strip of the band is extruded straight
+    # out along that facet's own normal. On the rounded outside corners (6 deg per 0.63 mm
+    # facet) neighbouring strips fan apart, which left a V slit ~0.08 mm wide through the
+    # vine at every joint, the pieces touching only along a line at the wall. Each slit is
+    # now filled with a wedge carrying the band's exact profile at that corner (where the
+    # vertical line s = s_corner crosses ink). Both strips end on that same line, so the
+    # wedge meets them face to face with matching outlines and nothing is left floating.
+    # (Trimming the strips at the bisector planes instead left slivers floating: each
+    # side then shows the vine from a little beyond the corner.) Inside corners overlap
+    # rather than open, so they keep the 0.3 mm run-on. CASE_IVY_FILL=0 skips the wedges.
+    def column(sc):   # z intervals where the band has ink on the vertical line s = sc
+        cut = band.section(Part.makeLine(V(sc, zc - Hb, 0), V(sc, zc + Hb, 0)))
+        iv = sorted((min(e.Vertexes[0].Point.y, e.Vertexes[-1].Point.y), max(e.Vertexes[0].Point.y, e.Vertexes[-1].Point.y))
+                    for e in cut.Edges)
+        out = []
+        for lo, hi in iv:
+            if out and lo <= out[-1][1] + 1e-6: out[-1][1] = max(out[-1][1], hi)
+            else: out.append([lo, hi])
+        return [(lo, hi) for lo, hi in out if hi - lo > 0.01]
+    wedges = 0
+    for i, (a, t, nrm, s0, s1) in enumerate(edges):
+        e0 = 0.3 if t.dot(edges[i - 1][2]) > 0.05 else 0.0
+        e1 = 0.3 if edges[(i + 1) % n][1].dot(nrm) > 0.05 else 0.0
+        strip = Part.makePlane(s1 - s0 + e0 + e1, Hb + 4, V(s0 - e0, zc - Hb / 2 - 2, 0))
+        part = band.common(strip)
+        if part.Area >= 1e-4:
+            part.translate(V(-s0, 0, 0))
+            m = V(t.y, -t.x, 0); sg = 1 if m.dot(nrm) > 0 else -1
+            sol = part.extrude(V(0, 0, sg * (IVY_RAISE + IVY_EMBED))); sol.translate(V(0, 0, -sg * IVY_EMBED))
+            M = App.Matrix(t.x, 0, m.x, a.x, t.y, 0, m.y, a.y, 0, 1, 0, 0, 0, 0, 0, 1)
+            sol.transformShape(M)
+            pieces.extend(sol.Solids)
+        # outside corner at the start of this facet: this wall turns away from the
+        # previous wall's outward normal
+        if IVY_FILL and t.dot(edges[i - 1][2]) < -1e-6:
+            na = edges[i - 1][2]
+            for lo, hi in column(s0):
+                tri = [V(a.x, a.y, lo), V(a.x + na.x * IVY_RAISE, a.y + na.y * IVY_RAISE, lo),
+                       V(a.x + nrm.x * IVY_RAISE, a.y + nrm.y * IVY_RAISE, lo)]
+                pieces.append(Part.Face(Part.makePolygon(tri + [tri[0]])).extrude(V(0, 0, hi - lo)))
+                wedges += 1
+    log("ivy joint wedges", wedges)
+    if os.environ.get("CASE_IVY_CHECK", "1") == "1":
+        # 3D connectivity: every stretch of vine between two zones must be one solid. A
+        # joint that only touches along a line (the old slits) splits it into several.
+        t1 = time.time()
+        # Count it only clear of the wall: inside the wall the strips overlap, which joined
+        # the old slit pieces even though the raised vine was cut through at every joint.
+        rel = pieces[0].fuse(pieces[1:]).removeSplitter()
+        wall = Part.Face(Part.makePolygon([V(x, y, 0) for x, y in O] + [V(O[0][0], O[0][1], 0)])).makeOffset2D(0.05)
+        bb = wall.BoundBox
+        outside = Part.makePlane(bb.XLength + 20, bb.YLength + 20, V(bb.XMin - 10, bb.YMin - 10, 0)).cut(wall)
+        outside = outside.extrude(V(0, 0, Z_RIM - Z_BOTTOM + 20)); outside.translate(V(0, 0, Z_BOTTOM - 10))
+        raised = rel.common(outside)
+        vols = sorted((round(x.Volume, 3) for x in raised.Solids), reverse=True)
+        log("ivy relief alone: solids", len(rel.Solids), "| raised part (>0.05 mm off the wall): solids", len(vols),
+            "expected", len(zones), "smallest", vols[-5:], "valid", rel.isValid(), "t", round(time.time() - t1, 1))
+        if os.environ.get("CASE_IVY_CHECK_ONLY") == "1": raise SystemExit("ivy check only")
+    log("ivy pieces", len(pieces), "t", round(time.time() - t0, 1))
+    return pieces
+
+def add_ivy(shape, pieces):
+    t0 = time.time()
+    s = shape.fuse(pieces).removeSplitter()
+    log("ivy fused valid", s.isValid(), "solids", len(s.Solids), "t", round(time.time() - t0, 1))
+    return s
+
+if IVY:
+    variants = [(IVY_NAME, plain)]
 
 # ---- export --------------------------------------------------------------
 PFX = "Lucca58 Stagger New Outline Case" if MODE == "stagger" else "Regress Case"
@@ -272,12 +584,17 @@ def stats(me):
 def good(me):
     return me.isSolid() and not me.hasNonManifolds() and len(me.getSelfIntersections()) == 0 and len(me.getSeparateComponents()) == 1
 def mesh_of(shape):
-    best = None
+    best = None; closed = None
     for d in (0.02, 0.01, 0.03, 0.05):
         me = Mesh.Mesh(shape.tessellate(d))
         log("  tess", d, stats(me))
         if good(me): return me
         if best is None: best = me
+        if me.isSolid() and not me.hasNonManifolds() and len(me.getSeparateComponents()) == 1:
+            if closed is None or len(me.getSelfIntersections()) < len(closed.getSelfIntersections()): closed = me
+    if closed is not None:   # a closed mesh with a few crossing facets beats a repair that opens it
+        log("  keeping closed tessellation", stats(closed))
+        return closed
     me = best
     me.fixSelfIntersections(); me.removeDuplicatedPoints(); me.harmonizeNormals()
     log("  after fixSelfIntersections", stats(me))
@@ -289,18 +606,27 @@ def mesh_of(shape):
     log("  after facet repair", stats(me))
     return me
 
-for name, left in (("", plain), (" Clerestory", cler)):
+for name, left in variants:
+    if IVY:     # vine first, on the plain case; it has no handedness, so the right half
+        #         inherits it by mirroring. Fusing the mirrored pieces onto the decorated
+        #         right half instead once ran for 26+ minutes without finishing.
+        left = add_ivy(left, ivy_pieces())
+    r = mirror(left)
+    if DECOR:   # decorate each half separately so the art and text are never mirrored
+        left, r = decorate(left, +1), decorate(r, -1)
     out = os.path.join(OUT, PFX + " Left" + name)
     left.exportStep(out + ".step")
     me = mesh_of(left); me.write(out + ".stl")
     log(PFX + " Left" + name, stats(me), "GOOD" if good(me) else "NOT CLEAN")
-    r = mirror(left)
     outr = os.path.join(OUT, PFX + " Right" + name)
     r.exportStep(outr + ".step")
-    mr = Mesh.Mesh(me)
-    mr.transform(App.Matrix(-1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1))
-    mr.harmonizeNormals()
-    if mr.Volume < 0: mr.flipNormals()
+    if DECOR:
+        mr = mesh_of(r)
+    else:
+        mr = Mesh.Mesh(me)
+        mr.transform(App.Matrix(-1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1))
+        mr.harmonizeNormals()
+        if mr.Volume < 0: mr.flipNormals()
     mr.write(outr + ".stl")
     log(PFX + " Right" + name, stats(mr), "GOOD" if good(mr) else "NOT CLEAN")
 log("DONE windows", nwin)

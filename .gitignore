@@ -7,3 +7,6 @@
 fp-info-cache
 _autosave-*
 *-backups/
+
+# Python bytecode from the case scripts
+__pycache__/
