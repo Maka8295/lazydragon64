@@ -51,7 +51,10 @@ NEW_STANDOFFS = [(93.9, 92.25), (93.9, 111.25), (93.9, 130.4),
 # (4.04 across corners) or round <= 4.0 mm: parts sit 2.25 mm from each hole on both
 # PCB faces. Positions in KiCad mm.
 SCREWS = [(94.005, 72.565), (93.995, 112.995), (170.205, 72.565), (170.215, 132.145)]
-SCREW_D, CBORE_D, FLOOR_UNDER_SPACER = 2.2, 4.4, 2.0
+# 2026-11-14: the counterbore under the case is 1.3 mm deep (floor 1.7 mm under each
+# spacer) so an M2 x 5 hex-socket button head (head 3.4 x 1.23 mm) sits flush with the
+# bottom. The screw then has 3.3 mm of thread in the spacer. Was 1.0 mm deep (2.0 floor).
+SCREW_D, CBORE_D, FLOOR_UNDER_SPACER = 2.2, 4.4, 1.7
 # Optional PCB-support pillars (CASE_PILLARS=1; the Corne has none). Each is placed
 # where a 3 mm pillar clears every pad, courtyard and socket body on both faces by 0.3 mm.
 PILLARS = [(94.0, 54.0), (94.0, 92.25), (94.0, 130.25), (113.0, 73.25), (113.0, 111.25),
@@ -298,16 +301,33 @@ else:
 # ---- decorations (2026-11-11), stagger mode -----------------------------------
 # Bottom: the Lazy Dragon drawing (~/Pictures/dragon.jpg, traced into dragon_art.json
 # by trace_art.py at 112.5 mm wide with 1 px of line thickening) is engraved ART_DEPTH
-# into the bottom face. It reads upright when the half is turned over front-to-back,
-# and its placement keeps every counterbore on both halves 3.6 mm from the ink.
+# into the bottom face. By default (CASE_ART_ROT=180, 2026-11-13) it reads upright when
+# the half is turned over left-to-right, like a page. CASE_ART_ROT=0 gives the original
+# orientation, upright when turned over front-to-back; only that one keeps every
+# counterbore on both halves 3.6 mm from the ink. At 180 the left-middle screw (H2) lands
+# in the coin pile, so its ART_CLEAR circle leaves a small blank ring there.
 # Front: TEXT in Cloister Black, raised TEXT_RAISE on the longest straight run of the
 # user-facing wall. Each half gets its own unmirrored copies so both read correctly.
-# CASE_IVY_ONLY=1 (with CASE_IVY=1): the vine is the only decoration. No text, no bottom
-# art, and no plaque gap, so the vine runs all the way round and stops only at the USB notch.
+# CASE_IVY_ONLY=1 (with CASE_IVY=1): no front text and no plaque gap, so the vine runs all
+# the way round and stops only at the USB notch. Since 2026-11-14 the bottom drawing is
+# still engraved (user wants the dragon on both undersides); CASE_IVY_ONLY_ART=0 leaves
+# the bottom plain as before.
 IVY_ONLY = os.environ.get("CASE_IVY_ONLY", "0") == "1"
 DECOR = os.environ.get("CASE_DECOR", "1") == "1" and MODE == "stagger" and not IVY_ONLY
+IVY_ONLY_ART = IVY_ONLY and MODE == "stagger" and os.environ.get("CASE_IVY_ONLY_ART", "1") == "1"
 ART_JSON = os.environ.get("CASE_ART", os.path.expanduser("~/PCBs/lazydragon64/case-new-outline/dragon_art.json"))
-ART_CENTER, ART_DEPTH, ART_CLEAR = (142.0, 102.0), 0.6, 3.6     # KiCad mm
+# 2026-11-14: the drawing is centred on the case outline's bounding box and scaled to
+# ART_SCALE (0.80 = 90.0 x 47.6 mm). That is the largest round size at which no screw
+# comes within ART_CLEAR of any line (max 0.805; H3 is the limit at 4.0 mm), so all four
+# counterbores sit outside the drawing. Before: full size at KiCad (142, 102), where H2
+# cut a blank ring into the coin pile. The ART_CLEAR cut stays as a guard and the build
+# logs whether it removed anything.
+_ox = [x for x, _ in O]; _oy = [y for _, y in O]
+ART_CENTER = ((min(_ox) + max(_ox)) / 2 - TX, -((min(_oy) + max(_oy)) / 2 - TY))   # KiCad mm
+ART_SCALE = float(os.environ.get("CASE_ART_SCALE", "0.80"))
+ART_DEPTH, ART_CLEAR = 0.6, 3.6     # mm
+ART_ROT = int(os.environ.get("CASE_ART_ROT", "180"))             # 0 or 180, about ART_CENTER
+assert ART_ROT in (0, 180), "CASE_ART_ROT must be 0 or 180"
 TEXT, FONT = "Lazy Dragon", os.path.expanduser("~/.local/share/fonts/CloisterBlack.ttf")
 TEXT_H, TEXT_RAISE, TEXT_EMBED = 12.0, 0.6, 0.3
 
@@ -348,14 +368,19 @@ def glyph_faces(size):
 def art_tool(side):
     d = json.load(open(ART_JSON))
     cx, cy = side * (ART_CENTER[0] + TX), -ART_CENTER[1] + TY
+    k = -1 if ART_ROT == 180 else 1          # 180: turn the drawing half a turn in place
     wires = []
     for lp in d["loops"]:
-        pts = [V(cx + u, cy - v, 0) for u, v in lp]
+        pts = [V(cx + k * ART_SCALE * u, cy - k * ART_SCALE * v, 0) for u, v in lp]
         wires.append(Part.makePolygon(pts + [pts[0]]))
     face = Part.makeFace(wires, "Part::FaceMakerBullseye")
     tool = face.extrude(V(0, 0, ART_DEPTH + 0.5)); tool.translate(V(0, 0, Z_BOTTOM - 0.5))
     clear = [Part.makeCylinder(ART_CLEAR, 5, V(side * (x + TX), -y + TY, Z_BOTTOM - 1)) for x, y in SCREWS]
-    return tool.cut(clear)
+    cut = tool.cut(clear)
+    lost = tool.Volume - cut.Volume
+    log("art side", side, "centre KiCad", tuple(round(c, 3) for c in ART_CENTER), "scale", ART_SCALE,
+        "screw clearance removed %.4f mm3" % lost, "(clips the drawing!)" if lost > 1e-3 else "(clear)")
+    return cut
 
 def text_solid(side):
     x0, x1, yw = front_run()
@@ -376,6 +401,12 @@ def text_solid(side):
     sol = Part.makeCompound(sols)
     log("text side", side, "run x", round(x0, 2), round(x1, 2), "y", round(yw, 3), "scale", round(k, 3), "size", sol.BoundBox)
     return sol
+
+def engrave(shape, side):   # bottom drawing only, no front text (vine-only halves)
+    t0 = time.time()
+    s = shape.cut(art_tool(side)).removeSplitter()
+    log("engraved side", side, "valid", s.isValid(), "solids", len(s.Solids), "t", round(time.time() - t0, 1))
+    return s
 
 def decorate(shape, side):
     t0 = time.time()
@@ -614,19 +645,23 @@ for name, left in variants:
     r = mirror(left)
     if DECOR:   # decorate each half separately so the art and text are never mirrored
         left, r = decorate(left, +1), decorate(r, -1)
+    elif IVY_ONLY_ART:
+        left, r = engrave(left, +1), engrave(r, -1)
     out = os.path.join(OUT, PFX + " Left" + name)
     left.exportStep(out + ".step")
     me = mesh_of(left); me.write(out + ".stl")
     log(PFX + " Left" + name, stats(me), "GOOD" if good(me) else "NOT CLEAN")
     outr = os.path.join(OUT, PFX + " Right" + name)
     r.exportStep(outr + ".step")
-    if DECOR:
+    if DECOR or IVY_ONLY_ART:   # the drawing is not mirrored, so mesh the right half itself
         mr = mesh_of(r)
     else:
         mr = Mesh.Mesh(me)
         mr.transform(App.Matrix(-1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1))
-        mr.harmonizeNormals()
-        if mr.Volume < 0: mr.flipNormals()
+        # A mirror reverses every facet's winding, so the copy is inside out until flipped.
+        # (Mesh.Volume read positive either way, so the old "if Volume < 0" check never
+        # fired and the vine-only right half STL came out inside out; fixed 2026-11-14.)
+        mr.flipNormals()
     mr.write(outr + ".stl")
     log(PFX + " Right" + name, stats(mr), "GOOD" if good(mr) else "NOT CLEAN")
 log("DONE windows", nwin)
