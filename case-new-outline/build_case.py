@@ -55,6 +55,15 @@ SCREWS = [(94.005, 72.565), (93.995, 112.995), (170.205, 72.565), (170.215, 132.
 # spacer) so an M2 x 5 hex-socket button head (head 3.4 x 1.23 mm) sits flush with the
 # bottom. The screw then has 3.3 mm of thread in the spacer. Was 1.0 mm deep (2.0 floor).
 SCREW_D, CBORE_D, FLOOR_UNDER_SPACER = 2.2, 4.4, 1.7
+# 2026-11-14: LCSC only stocks 8 mm M2 standoffs (the 7.5 mm STTZ1041 is out of stock), so
+# each standoff stands in a pocket SPACER_LEN - 7.5 deep (Ø4.6) in the top of the floor.
+# Its top, and so the plate, lands where a 7.5 mm standoff on the flat floor would. With
+# the 1.3 mm counterbore underneath, 1.2 mm of floor is left under each standoff, and
+# the pocket also locates the standoffs during assembly. CASE_SPACER_LEN=7.5: no pocket.
+# Screws: M2 x 4 pan head (LCSC C357393) at both ends, 2.8 + 2.4 mm of thread.
+SPACER_LEN = float(os.environ.get("CASE_SPACER_LEN", "8.0"))
+POCKET_D, POCKET_DEPTH = 4.6, SPACER_LEN - 7.5
+assert 0 <= POCKET_DEPTH <= FLOOR_UNDER_SPACER - 1.0, "pocket would leave < 1 mm of floor"
 # Optional PCB-support pillars (CASE_PILLARS=1; the Corne has none). Each is placed
 # where a 3 mm pillar clears every pad, courtyard and socket body on both faces by 0.3 mm.
 PILLARS = [(94.0, 54.0), (94.0, 92.25), (94.0, 130.25), (113.0, 73.25), (113.0, 111.25),
@@ -193,6 +202,8 @@ def base():
         s = s.cut([cyl(SCREW_D, x, y, Z_BOTTOM - 1, Z_FLOOR + 0.5) for x, y in SCREWS])
         z_cb = Z_FLOOR - FLOOR_UNDER_SPACER
         s = s.cut([cyl(CBORE_D, x, y, Z_BOTTOM - 1, z_cb) for x, y in SCREWS])
+        if POCKET_DEPTH > 0:   # standoff seat, open to the cavity above
+            s = s.cut([cyl(POCKET_D, x, y, Z_FLOOR - POCKET_DEPTH, Z_FLOOR + 0.5) for x, y in SCREWS])
         return s.removeSplitter()
     # rings are embedded 0.3 into the floor so nothing is coplanar
     s = s.fuse([prism(r, Z_FLOOR - 0.3, Z_RING) for r in RING]).removeSplitter()

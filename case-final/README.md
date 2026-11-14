@@ -16,11 +16,17 @@ Print bottom-down. Both STLs are closed single shells.
 ## Mounting hardware (Corne v4 style)
 
 Per half:
-- **4 × M2 female–female spacers, 8 mm.** Round no wider than Ø4.0, or a 3.5 mm hex. They pass through the PCB's Ø5 holes. (The design height is 7.5 mm; 8 mm lifts the plate/PCB 0.5 mm, which is fine. Don't use 7 mm.)
-- **8 × M2 screws with a head no wider than 3.5 mm and no taller than 1.3 mm.** For example, M2 × 5 hex-socket button heads. Or the LCSC Shuntian pan heads (datasheet head 3.30 × 1.30 mm): C357393 M2 × 4 for the floor and C357534 M2 × 6 for the plate.
-  - 4 go up through the case floor.
-  - 4 go down through the plate.
-- The recesses under the case are Ø4.4 × 1.3 mm deep, so these heads sit flush with the bottom.
+- **4 × M2 × 8 mm female–female standoffs.** LCSC C50378452 (XHHD STTZ1005, round brass). Use any round standoff no wider than Ø4.0 or a 3.5 mm hex; they pass through the PCB's Ø5 holes.
+  - Each standoff stands in a Ø4.6 × 0.5 mm pocket in the case floor, so its top lands exactly at the designed plate height.
+  - Use 8 mm, not 7.5 mm: a 7.5 mm standoff would sit 0.5 mm low and put the hotswap sockets on the floor.
+- **8 × M2 × 4 screws, the same screw at both ends of each standoff:** LCSC C357393 (Shuntian PM2X4, nickel-plated Phillips pan head, head 3.30 × 1.30 mm).
+  - Four go up through the case floor and sit flush in the Ø4.4 × 1.3 mm recesses underneath. The floor under each standoff is 1.2 mm, so 2.8 mm of the thread goes into the standoff.
+  - Four go down through the 1.6 mm plate, so 2.4 mm of the thread goes into the standoff. Don't put washers under these heads.
+  - Tighten snug, not hard: the brass threads strip easily.
+- Any M2 head no wider than 3.5 mm and no taller than 1.3 mm works.
+- The two screws in a standoff must not meet in the middle: (floor screw − 1.2) + (plate screw − 1.6) must be under 8 mm.
+  - M2 × 4 at both ends gives 5.2 mm.
+  - M2 × 6 at both ends gives 9.2 mm, which is too long.
 
 ## Rebuilding
 
