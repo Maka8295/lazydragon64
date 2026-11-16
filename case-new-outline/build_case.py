@@ -340,7 +340,14 @@ ART_DEPTH, ART_CLEAR = 0.6, 3.6     # mm
 ART_ROT = int(os.environ.get("CASE_ART_ROT", "180"))             # 0 or 180, about ART_CENTER
 assert ART_ROT in (0, 180), "CASE_ART_ROT must be 0 or 180"
 TEXT, FONT = "Lazy Dragon", os.path.expanduser("~/.local/share/fonts/CloisterBlack.ttf")
-TEXT_H, TEXT_RAISE, TEXT_EMBED = 12.0, 0.6, 0.3
+TEXT_RAISE, TEXT_EMBED = 0.6, 0.3
+# 2026-11-16: CASE_TEXT_H sets the text's height (default 12 mm, capped at 85 % of the
+# run's length) and CASE_TEXT_ALIGN=left puts its left edge CASE_TEXT_MARGIN from the
+# run's left end instead of centring it (Marika cases: 7.5 mm, left, 3 mm).
+TEXT_H = float(os.environ.get("CASE_TEXT_H", "12.0"))
+TEXT_ALIGN = os.environ.get("CASE_TEXT_ALIGN", "center")
+TEXT_MARGIN = float(os.environ.get("CASE_TEXT_MARGIN", "3.0"))
+assert TEXT_ALIGN in ("center", "left"), "CASE_TEXT_ALIGN must be center or left"
 
 def inside_O(x, y):
     c = False
@@ -395,14 +402,15 @@ def art_tool(side):
 
 def text_solid(side):
     x0, x1, yw = front_run()
-    if side < 0: x0, x1 = -x1, -x0
     bb = Part.makeCompound(glyph_faces(10.0)).BoundBox
     k = min(TEXT_H / bb.YLength, 0.85 * (x1 - x0) / bb.XLength)
     faces = glyph_faces(10.0 * k)
     bb = Part.makeCompound(faces).BoundBox
+    cx = (x0 + x1) / 2 if TEXT_ALIGN == "center" else x0 + TEXT_MARGIN + bb.XLength / 2
+    if side < 0: x0, x1, cx = -x1, -x0, -cx      # the right half's run, mirrored
     # rotate +90 about x: local x -> case +x (reads left to right from the front),
     # local y -> +z, extrusion (local +z) -> -y, i.e. out of the wall
-    pl = App.Placement(V((x0 + x1) / 2, yw + TEXT_EMBED, (Z_BOTTOM + Z_RIM) / 2), App.Rotation(V(1, 0, 0), 90))
+    pl = App.Placement(V(cx, yw + TEXT_EMBED, (Z_BOTTOM + Z_RIM) / 2), App.Rotation(V(1, 0, 0), 90))
     sols = []
     for f in faces:
         s = f.extrude(V(0, 0, TEXT_RAISE + TEXT_EMBED))
@@ -410,7 +418,7 @@ def text_solid(side):
         s.Placement = pl.multiply(s.Placement)
         sols.append(s)
     sol = Part.makeCompound(sols)
-    log("text side", side, "run x", round(x0, 2), round(x1, 2), "y", round(yw, 3), "scale", round(k, 3), "size", sol.BoundBox)
+    log("text side", side, "run x", round(x0, 2), round(x1, 2), "y", round(yw, 3), "scale", round(k, 3), "align", TEXT_ALIGN, "size", sol.BoundBox)
     return sol
 
 def engrave(shape, side):   # bottom drawing only, no front text (vine-only halves)
@@ -443,6 +451,20 @@ IVY_N, IVY_RAISE, IVY_EMBED = 6, 0.8, 0.3
 IVY_MAX_BAND = float(os.environ.get("CASE_IVY_MAX_BAND", "14.5"))   # mm; alternating tiles: band = 2 x reach from the stem
 IVY_NAME = os.environ.get("CASE_IVY_NAME", " Ivy")
 PLAQUE_PAD, PLAQUE_R, NOTCH_PAD = (3.0, 1.5), 2.0, 1.0      # mm
+# 2026-11-16, Marika cases: CASE_BAND=moon wraps the moon-phase band of moon_band.py
+# (design B of ~/Downloads/image0(1).png) instead of a traced ivy tile. It goes through
+# the same unrolled-band path below (facet strips, corner wedges, checks). The jogs in
+# the wall are left bare and every straight section between them, the text and the
+# notch gets its own centred arrangement (see moon_band.layout). CASE_MOON_K is the
+# scale in mm per source pixel. The crescent inside each sun opens to the right as seen
+# from outside, like the design (CASE_MOON_SUN_OPEN=-1: to the left). The band's s runs
+# right to left along the outside of the left half's walls, so the band is drawn with
+# the crescent reversed for the left half; an IVY_ONLY build is used for its mirrored
+# right half, and the mirror turns it back, so that one is drawn the right way round.
+BAND = os.environ.get("CASE_BAND", "ivy")
+assert BAND in ("ivy", "moon"), "CASE_BAND must be ivy or moon"
+MOON_K = float(os.environ.get("CASE_MOON_K", "0.105"))
+MOON_SUN_OPEN = int(os.environ.get("CASE_MOON_SUN_OPEN", "1"))
 # 2026-11-11 second version: CASE_IVY_ART=ivy_minimalist.json CASE_IVY_NAME=" Ivy Minimalist".
 # That tile (make_ivy_tile.py, ~/Downloads/Minimalist Ivy Vine Divider.png) alternates
 # normal and upside-down copies, and its zones end only on bare stem (cut_ok).
@@ -463,10 +485,60 @@ def s_of(edges, x, y):
         if best is None or d < best[0]: best = (d, s0 + u)
     return best[1]
 
+def wall_corners(edges, P):
+    """(a, b, kind) for every stretch of wall between straight runs of >= 10 mm: "convex"
+    for a plain rounded corner (a single 90 deg turn), "step" for a jog in the wall"""
+    runs = []
+    for a, t, nrm, s0, s1 in edges:
+        if runs and (runs[-1][2] - nrm).Length < 1e-3: runs[-1][4] = s1
+        else: runs.append([a, t, nrm, s0, s1])
+    runs = [r for r in runs if r[4] - r[3] >= 10.0]
+    out = []
+    for i in range(len(runs)):
+        r0, r1 = runs[i], runs[(i + 1) % len(runs)]
+        a, b = r0[4], r1[3] + (P if i + 1 == len(runs) else 0)
+        turn = r0[2].x * r1[2].y - r0[2].y * r1[2].x
+        out.append((a, b, "convex" if abs(abs(turn) - 1) < 1e-3 and b - a < 10 else "step"))
+    return out
+
+def moon_band_face(edges, P, zc, zones):
+    import sys
+    sys.path.insert(0, os.path.expanduser("~/PCBs/lazydragon64/case-new-outline"))
+    import moon_band as mb
+    corners = wall_corners(edges, P)
+    log("wall corners", [(round(a, 1), round(b, 1), c) for a, b, c in corners])
+    steps = [(a, b) for a, b, c in corners if c == "step"]
+    sun_open = MOON_SUN_OPEN * (1 if IVY_ONLY else -1)
+    placed, summary = mb.layout(P, list(zones) + steps, corners, k=MOON_K, sun_open=sun_open, log=log)
+    def prim(pr, w):
+        if pr[0] == "c":
+            return Part.Face(Part.Wire(Part.makeCircle(pr[3], V(pr[1] + w, zc + pr[2], 0))))
+        q = [V(x + w, zc + y, 0) for x, y in pr[1]]
+        return Part.Face(Part.makePolygon(q + [q[0]]))
+    # Each element is merged as a thin solid and its base kept: fusing the flat faces
+    # directly leaves e.g. every sun ray a separate face on top of the ring. Elements
+    # never touch each other, so the band is just the compound of their bases.
+    faces = []; islands = 0
+    for s, kind, parts in placed:
+        islands += mb.count_islands(kind)
+        for w in (-P, 0.0, P):      # copies one wrap either side, like the ivy tiles
+            sols = []
+            for add, subs in parts:
+                f = prim(add, w)
+                if subs: f = f.cut([prim(x, w) for x in subs])
+                sols += [g.extrude(V(0, 0, 1)) for g in f.Faces]
+            u = sols[0].fuse(sols[1:]).removeSplitter() if len(sols) > 1 else sols[0]
+            faces += [g for g in u.Faces if g.BoundBox.ZMax < 1e-6]
+    band = Part.makeCompound(faces)
+    Hb = 2 * MOON_K * mb.SUN_LONG_CARD + 1.0
+    log("moon band: elements", len(placed), "islands", islands, "faces", len(band.Faces), "band height", round(Hb, 2))
+    return band, Hb, islands
+
 def ivy_pieces():
     t0 = time.time()
-    d = json.load(open(IVY_JSON)); edges, P = unrolled()
-    per = d["period_px"]; zc = (Z_BOTTOM + Z_RIM) / 2
+    edges, P = unrolled(); zc = (Z_BOTTOM + Z_RIM) / 2
+    d = json.load(open(IVY_JSON)) if BAND == "ivy" else {"period_px": 1, "height_px": 1, "loops": []}   # moon: unused
+    per = d["period_px"]
     ALT = d.get("alternate", False)            # make_ivy_tile.py: copies alternate normal / 180 deg
     if ALT:   # fewest copies (even, so the alternation closes round the wrap) that fit IVY_MAX_BAND
         N = next(n for n in range(2, 40, 2) if 2 * d["half_height_px"] * (P / n) / per <= IVY_MAX_BAND)
@@ -483,7 +555,9 @@ def ivy_pieces():
         sa, sb = sorted((s_of(edges, tb.XMin, tb.YMax), s_of(edges, tb.XMax, tb.YMax)))
         need.insert(0, (sa - PLAQUE_PAD[0], sb + PLAQUE_PAD[0]))
     def orient(j): return ALT and j % 2 == 1   # rotated copy
-    if "cut_ok" in d:
+    if BAND == "moon":
+        zones = need; phase = 0.0; N = L = k = 0
+    elif "cut_ok" in d:
         # End the vine only on bare-stem columns: each zone edge moves outwards to the
         # nearest column marked cut_ok, so no leaf is sliced and no fragment is left behind.
         ok = d["cut_ok"]
@@ -517,16 +591,20 @@ def ivy_pieces():
             return sum(max(ink[(int(((sx - ph) % L) / k) + j) % per] for j in range(-win, win + 1)) for sx in cuts)
         phase = min((i * 0.25 for i in range(int(L / 0.25))), key=cost)
         zones = need
-    log("ivy N", N, "L", round(L, 3), "band", round(Hb, 2), "k mm/px", round(k, 5), "phase", phase,
-        "zones", [(round(a, 1), round(b, 1)) for a, b in zones])
-    tiles = []
-    for j in range(-2, N + 2):
-        s0 = phase + j * L
-        for lp in d["loops"]:
-            if orient(j): q = [V(s0 + (per - u) * k, zc - v * k, 0) for u, v in lp]
-            else: q = [V(s0 + u * k, zc + v * k, 0) for u, v in lp]
-            tiles.append(Part.Face(Part.makePolygon(q + [q[0]])))
-    band = tiles[0].fuse(tiles[1:]).removeSplitter() if len(tiles) > 1 else tiles[0]
+    n_expect = len(zones)
+    if BAND == "moon":
+        band, Hb, n_expect = moon_band_face(edges, P, zc, zones)
+    else:
+        log("ivy N", N, "L", round(L, 3), "band", round(Hb, 2), "k mm/px", round(k, 5), "phase", phase,
+            "zones", [(round(a, 1), round(b, 1)) for a, b in zones])
+        tiles = []
+        for j in range(-2, N + 2):
+            s0 = phase + j * L
+            for lp in d["loops"]:
+                if orient(j): q = [V(s0 + (per - u) * k, zc - v * k, 0) for u, v in lp]
+                else: q = [V(s0 + u * k, zc + v * k, 0) for u, v in lp]
+                tiles.append(Part.Face(Part.makePolygon(q + [q[0]])))
+        band = tiles[0].fuse(tiles[1:]).removeSplitter() if len(tiles) > 1 else tiles[0]
     # zones repeated one wrap either side, since the tiles run past both ends of [0, P]
     clear = [Part.makePlane(hi - lo, Hb + 4, V(lo + w, zc - Hb / 2 - 2, 0)) for lo, hi in zones for w in (-P, 0, P)]
     band = band.cut(clear).removeSplitter()
@@ -536,9 +614,9 @@ def ivy_pieces():
     m = (zones[0][0] + zones[0][1]) / 2
     turn = band.common(Part.makePlane(P, Hb + 4, V(m, zc - Hb / 2 - 2, 0)))
     areas = sorted((round(f.Area, 1) for f in turn.Faces), reverse=True)
-    log("ivy band pieces over one turn (mm2):", areas, "expected", len(zones))
-    if len(areas) != len(zones):
-        log("WARNING: ivy pattern has", len(areas), "separate pieces, expected", len(zones))
+    log("ivy band pieces over one turn (mm2):", areas, "expected", n_expect)
+    if len(areas) != n_expect:
+        log("WARNING: band pattern has", len(areas), "separate pieces, expected", n_expect)
     if os.environ.get("CASE_IVY_DRY") == "1":   # dump the unrolled band and stop
         json.dump({"P": P, "zc": zc, "Hb": Hb, "zones": zones, "text_s": [sa, sb], "notch_s": [sc, sd],
                    "start": m, "faces": [[[(p.x, p.y) for p in w.discretize(Deflection=0.02)] for w in f.Wires] for f in turn.Faces]},
@@ -602,7 +680,7 @@ def ivy_pieces():
         raised = rel.common(outside)
         vols = sorted((round(x.Volume, 3) for x in raised.Solids), reverse=True)
         log("ivy relief alone: solids", len(rel.Solids), "| raised part (>0.05 mm off the wall): solids", len(vols),
-            "expected", len(zones), "smallest", vols[-5:], "valid", rel.isValid(), "t", round(time.time() - t1, 1))
+            "expected", n_expect, "smallest", vols[-5:], "valid", rel.isValid(), "t", round(time.time() - t1, 1))
         if os.environ.get("CASE_IVY_CHECK_ONLY") == "1": raise SystemExit("ivy check only")
     log("ivy pieces", len(pieces), "t", round(time.time() - t0, 1))
     return pieces
