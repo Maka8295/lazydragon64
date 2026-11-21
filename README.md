@@ -86,11 +86,7 @@ The case STEP and STL files are in [`case-new-outline/`](case-new-outline). Each
 
 ### Firmware
 
-Not in this repo yet; QMK is planned. Things to account for:
-
-- **Per-half I2C pins.** The reversible board mirrors the RP2040-Zero, so the OLED's I2C pins land on different GPIOs on each half. Each half needs its own pin configuration.
-- **Split link.** It uses QMK's PIO serial driver (`SERIAL_DRIVER = vendor`), which works on any pins and runs full duplex.
-- **RGB brightness.** All 64 LEDs run from one USB port, so cap the brightness.
+QMK, in [`firmware/`](firmware). Flash `lazydragon64_left.uf2` to the left half and `lazydragon64_right.uf2` to the right. The reversible board mirrors the RP2040-Zero, so the matrix and the OLED's I2C pins are on different GPIOs on each half, and each half has its own build. The split link is a full-duplex PIO UART. See [`firmware/README.md`](firmware/README.md) for the layout, flashing and the latency settings.
 
 ## Repository layout
 
@@ -99,6 +95,7 @@ Not in this repo yet; QMK is planned. Things to account for:
 | `lazydragon64.kicad_*` | schematic and PCB (KiCad 10) |
 | `lcsc_cart.csv` | LCSC parts cart |
 | `images/` | renders used in this README |
+| `firmware/` | QMK firmware: `.uf2` files for each half and the keyboard source |
 | `plate/` | `Lucca58 Stagger Plate` FR4 switch plate, `marikaplate` alternative plate, and their Gerber zips in `production/` |
 | `case-new-outline/` | case generator scripts, art data, and STEP/STL files for every case variant |
 | `case-new-outline/3d models/` | PCB, plate and spacer STEPs, plus the assembled left half |
