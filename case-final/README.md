@@ -4,8 +4,19 @@
 |---|---|
 | `lazydragon64 Case Left.step` / `.stl` | Left half: Ivy Curl vine wrap, "Lazy Dragon" in Cloister Black on the front wall, Lazy Dragon drawing engraved underneath |
 | `lazydragon64 Case Right.step` / `.stl` | Right half: Ivy Curl vine all the way round (stops only at the USB notch), no front text, Lazy Dragon drawing engraved underneath |
+| `chamfer/` | The same two halves with a 1 mm × 45° chamfer on the outer top edge (`… Chamfer.step` / `.stl`) |
 
 Print bottom-down. Both STLs are closed single shells.
+
+## Chamfered versions
+
+- `chamfer/` holds both halves with the edge where the outer wall meets the rim top chamfered 1 mm × 45°.
+- Only that edge changes. The inner top edge, the bottom edges, the vine, the text, the dragon, the screw recesses and the standoff pockets are exactly as in the files above.
+- The chamfer starts 14.1 mm up the outer wall, 0.2 mm above the highest point of the vine, so it doesn't cut into the vine.
+- Their STLs are closed. Two pairs of triangles cross, by about 0.0001 mm each, where the vine turns the back wall's step corners. Re-meshing the unchamfered STEP files gives the same two, and a slicer won't see them.
+- They were made from the STEP files above with `case-new-outline/chamfer_top.py`, for example:
+  `CASE_IN="../case-final/lazydragon64 Case Left.step" CASE_OUT="../case-final/chamfer/lazydragon64 Case Left Chamfer" freecadcmd -c "exec(open('chamfer_top.py').read())"`
+  Each takes about 3 minutes.
 
 ## Underside (both halves)
 

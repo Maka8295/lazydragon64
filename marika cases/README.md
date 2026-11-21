@@ -4,8 +4,19 @@
 |---|---|
 | `lazydragon64 Marika Case Left.step` / `.stl` | Left half: moon-phase band round the wall, "Lazy Dragon" in Cloister Black at the left end of the front wall, Lazy Dragon drawing engraved underneath |
 | `lazydragon64 Marika Case Right.step` / `.stl` | Right half: moon-phase band all the way round, no text, Lazy Dragon drawing engraved underneath |
+| `chamfer/` | The same two halves with a 1 mm × 45° chamfer on the outer top edge (`… Chamfer.step` / `.stl`) |
 
 Print bottom-down. Both STLs are closed single shells.
+
+## Chamfered versions
+
+- `chamfer/` holds both halves with the edge where the outer wall meets the rim top chamfered 1 mm × 45°.
+- Only that edge changes. The inner top edge, the bottom edges, the band, the text, the dragon, the screw recesses and the standoff pockets are exactly as in the files above.
+- The chamfer starts 14.1 mm up the outer wall, 1.5 mm above the tips of the tallest sun rays.
+- The left STL is fully clean. On the right one, two triangles touch, without any measurable overlap, at one moon on the outer side wall. It is still closed, and a slicer won't see it.
+- They were made from the STEP files above with `case-new-outline/chamfer_top.py`, for example:
+  `CASE_IN="../marika cases/lazydragon64 Marika Case Left.step" CASE_OUT="../marika cases/chamfer/lazydragon64 Marika Case Left Chamfer" freecadcmd -c "exec(open('chamfer_top.py').read())"`
+  Each takes about 2 minutes.
 
 ## The band
 
