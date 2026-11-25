@@ -56,9 +56,9 @@
         "max_brightness": 100,
         "sleep": true,
         "default": {
-            "animation": "solid_color",
-            "sat": 100,
-            "val": 100
+            "hue": 85,
+            "sat": 255,
+            "val": 50
         },
         "animations": {
             "breathing": true,

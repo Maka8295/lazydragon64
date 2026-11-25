@@ -6,3 +6,6 @@
 #define I2C_DRIVER I2CD0
 #define I2C1_SDA_PIN GP12
 #define I2C1_SCL_PIN GP5
+
+/* OLED orientation: upside down at 0, like the right half (2026-11-25). */
+#define LD64_OLED_FLIP 1

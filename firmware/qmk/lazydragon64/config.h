@@ -19,7 +19,14 @@
 #define RP2040_BOOTLOADER_DOUBLE_TAP_RESET_TIMEOUT 200U
 
 /* OLED: 0.91" 128x32 SSD1306 on J2, driven by dragon_screen.c from its own thread (QMK's
- * OLED feature is off). The module stands lengthwise over the RP2040-Zero, so the picture
- * is drawn upright. If it comes out upside down, set LD64_OLED_FLIP to 1. */
-#define LD64_OLED_FLIP 0
+ * OLED feature is off). The module stands lengthwise over the RP2040-Zero. Each half sets
+ * LD64_OLED_FLIP in its own config.h (1 turns the picture round 180 degrees).
+ * On the first built right half the picture sat too far left, so it is moved one pixel
+ * right (2026-11-25). The drawing is a full 32 px wide, so its rightmost column (the edge
+ * of the hoard and of the last WPM digit) falls off. Two pixels cut off the dragon's tail. */
+#define LD64_OLED_SHIFT 1
 #define LD64_OLED_TIMEOUT 60000 // screen off after a minute without a key
+
+/* LEDs: the dungeonOS breath (rgb_matrix_kb.inc) is the default effect. The hue/sat in
+ * info.json (dark green) still apply to the other effects, e.g. solid colour. */
+#define RGB_MATRIX_DEFAULT_MODE RGB_MATRIX_CUSTOM_DUNGEON_BREATH

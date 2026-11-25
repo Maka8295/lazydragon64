@@ -116,7 +116,7 @@ Adjust if needed:
 
 ## Check on first power-up
 
-- **OLED orientation.** The picture is drawn upright for a module standing lengthwise over the RP2040-Zero. If it is upside down, set `LD64_OLED_FLIP` to 1 in `config.h`.
+- **OLED orientation.** The picture is drawn upright for a module standing lengthwise over the RP2040-Zero. If it is upside down, flip `LD64_OLED_FLIP` in that half's `left/config.h` or `right/config.h` (both halves ship flipped). `LD64_OLED_SHIFT` in `config.h` moves the picture sideways a pixel at a time.
 - **LED current.** All 64 LEDs run from one USB port. The colour and brightness carry over from the Lucca-58HE: hue 0, saturation 100, brightness 100 out of 255, and capped at 100.
   - That colour draws about 0.8 A for the whole keyboard (SK6812MINI-E: 12 mA per colour at full). Full white at the cap draws about 1 A.
   - Most desktop ports supply that, but it is above USB 2.0's 500 mA. If a laptop port cuts out, turn the brightness down (FN + Brght-) or lower `max_brightness` in `info.json`.

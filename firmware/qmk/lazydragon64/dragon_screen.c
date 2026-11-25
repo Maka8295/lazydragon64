@@ -36,6 +36,9 @@
 #ifndef LD64_OLED_FLIP
 #    define LD64_OLED_FLIP 0 // 1 turns the picture round 180 degrees
 #endif
+#ifndef LD64_OLED_SHIFT
+#    define LD64_OLED_SHIFT 0 // moves the picture this many pixels right (negative: left), as seen upright
+#endif
 #ifndef LD64_OLED_CONTRAST
 #    define LD64_OLED_CONTRAST 0xFF
 #endif
@@ -225,11 +228,20 @@ static bool oled_hw_init(void) {
 }
 
 // The panel is 128 columns of four 8-pixel pages. Each canvas row y becomes one column.
+// LD64_OLED_SHIFT moves canvas column x to x + shift; columns pushed past an edge are lost.
+static uint32_t shifted(uint32_t row) {
+#if LD64_OLED_SHIFT >= 0
+    return row << LD64_OLED_SHIFT;
+#else
+    return row >> -(LD64_OLED_SHIFT);
+#endif
+}
+
 static uint8_t page_byte(int col, int page) {
 #if LD64_OLED_FLIP
-    return (fb[127 - col] >> (8 * page)) & 0xFF;
+    return (shifted(fb[127 - col]) >> (8 * page)) & 0xFF;
 #else
-    uint8_t v = (fb[col] >> (24 - 8 * page)) & 0xFF, r = 0;
+    uint8_t v = (shifted(fb[col]) >> (24 - 8 * page)) & 0xFF, r = 0;
     for (int b = 0; b < 8; b++) r |= ((v >> b) & 1) << (7 - b);
     return r;
 #endif
