@@ -7,7 +7,7 @@
 | `qmk/lazydragon64/` | the QMK keyboard: shared settings in `info.json` and `config.h`, per-half pins in `left/` and `right/`, keymap in `keymaps/default/keymap.c` |
 | `build.sh` | copies `qmk/lazydragon64` into a QMK checkout and builds both halves |
 | `gen_layout.py` | rewrites the key layout and the LED map in `info.json` from the KiCad board |
-| `dragon_screen/` | the OLED pixel art (`art.py`) and `make_art.py`, which turns it into `qmk/lazydragon64/dragon_art.h` |
+| `dragon_screen/` | the OLED pixel art: `art.py` and `make_art.py` for the left half's screen (`dragon_art.h`), `flight_art.py` for the right half's (`flight_art.h`), and a PC preview of the right half's animation |
 
 Each half needs its own file. The reversible board mirrors the RP2040-Zero, so the matrix and the OLED's I2C sit on different GPIOs on each half. The file also fixes which half is which, so nothing has to be set up after flashing.
 
@@ -34,9 +34,9 @@ BASE
 |------+------+------+------+------+------|                    |------+------+------+------+------+------|
 | Esc  |   1  |   W  |   E  |   R  |   T  |                    |   Y  |   U  |   I  |   O  |   0  | Del  |
 |------+------+------+------+------+------+------.      ,------+------+------+------+------+------+------|
-| Tab  |   Q  |   S  |   D  |   F  |   G  |      |      |      |   H  |   J  |   K  |   L  |   P  |   =  |
+| Tab  |   Q  |   S  |   D  |   F  |   G  |Scrtch|      |EN/JP |   H  |   J  |   K  |   L  |   P  |   =  |
 |------+------+------+------+------+------+------|      |------+------+------+------+------+------+------|
-|RShift|   A  |   X  |   C  |   V  |   B  |  FN  |      | Kana |   N  |   M  |   ,  |   .  |   ;  |   '  |
+|RShift|   A  |   X  |   C  |   V  |   B  |  FN  |      | Caps |   N  |   M  |   ,  |   .  |   ;  |   '  |
 |------+------+------+------+------+------+------'      `------+------+------+------+------+------+------|
 |LShift|   Z  | Ctrl | Alt  | GUI  | Space  |                | Enter  | Bksp |   [  |   ]  |   /  |   -  |
 `-----------------------------------------'                `-----------------------------------------'
@@ -47,7 +47,7 @@ FN (hold FN)
 |------+------+------+------+------+------|                    |------+------+------+------+------+------|
 |RGB on|  F1  |Effct-|Effct+|Brght-|Brght+|                    |      |      |  Up  |      | F10  | F11  |
 |------+------+------+------+------+------+------.      ,------+------+------+------+------+------+------|
-|      |      |      |      | Vol- | Vol+ |      |      |      |   H  | Left | Down |Right |      | F12  |
+|      |      |      |      | Vol- | Vol+ |Scrtch|      |EN/JP |   H  | Left | Down |Right |      | F12  |
 |------+------+------+------+------+------+------|      |------+------+------+------+------+------+------|
 |      |      |      |      | Prev | Next |  FN  |      | Play |   ~  |   \  |   |  |      |      |PrtScr|
 |------+------+------+------+------+------+------'      `------+------+------+------+------+------+------|
@@ -57,18 +57,25 @@ FN (hold FN)
 
 - The KMK keymap is listed in multiplexer-channel order, not key order. Each key's position was traced on the Lucca-58HE PCBs (sensor, then its 1.5k resistor, then the ADG732 input). Every letter and number landed on its QWERTY spot, so the modifier positions it gives can be trusted.
 - The Lucca-58HE has 29 keys a side, and this board has 32. The Lucca's pinky columns sit much lower, so they move down a row here. That frees the top key of the two outer columns on each half:
-  - left: play/pause and next track
+  - left: play/pause and next track. On the desktop, Hyprland sends the media keys to cmus (`cmus-remote`, in `~/Dotfiles/hypr/hyprland.lua`).
   - right: volume down and volume up
-- The inner key beside G / H is also new and does nothing for now. The inner key beside B / N is the Lucca's inner key (FN / Kana).
+- The inner keys beside G and H are also new:
+  - left: Super+B, which opens Hyprland's scratchpad
+  - right: Ctrl+Space, which switches fcitx5 between English and Japanese (mozc)
+- The inner key beside B / N is the Lucca's inner key: FN on the left, and Caps Lock on the right.
 - Blank keys on FN do nothing, as in the KMK code (it used `XXXXXXX`, not transparent keys).
 - Changed from the KMK code:
   - **Caps.** `LCAP` (locking caps lock, no longer defined in that KMK version) is now plain Caps Lock.
   - **RGB keys.** The five RGB keys on FN are new; those keys did nothing on that layer before. "Effect" steps through the lighting effects.
-- **Kana** sends the Japanese Katakana/Hiragana key (`KC_INT2`), as KMK's `KANA` did.
+  - **Kana.** The right inner key was the Japanese Katakana/Hiragana key (KMK's `KANA`); it is Caps Lock here, and the key above it switches input.
 
 ## Screen
 
-Each half's OLED shows the Lazy Dragon screen (`qmk/lazydragon64/dragon_screen.c`). From top to bottom:
+The two halves show different screens, both drawn by `qmk/lazydragon64/dragon_screen.c`.
+
+### Left half: the hoard
+
+From top to bottom:
 - **Layer:** an outlined BASE, or a filled FN.
 - **Dragon:** the dragon from the case bottom, asleep on its hoard. It wakes, flicks its tail, flaps its wing and breathes fire as you type (details below).
 - **Music bars:** eight bars that jump with each key and settle to your typing speed, with falling peak marks.
@@ -82,7 +89,20 @@ The dragon:
 - **Caps Lock on:** it breathes fire on the hoard.
 - **Glints:** now and then something in the hoard glints.
 
-The screen goes off after a minute without a key, and while the computer sleeps.
+### Right half: the flight
+
+The dragon seen from above, flying up the screen while the land scrolls past below it (`qmk/lazydragon64/flight_scene.c`). It runs at 30 frames a second.
+- **Flight:** it flaps for a few seconds, then glides with its wings level. The tail never stops swaying.
+- **Fire:** every 5 to 13 s it glides, opens its jaws and breathes a jet of flame. The flames slow down and drift back past it as smoke. The first comes 3 s after the screen wakes.
+- **The land:** a loop of sea, a coast, fields along a road, a village and a castle, a river through a forest, and two lakes. One lap takes about 33 s.
+- **Clouds:** now and then one passes underneath, faster than the land because it is closer.
+- **Typing:** your words per minute (shared from the other half) speed up the flight and the wingbeat.
+
+`LD64_SCREEN_FLIGHT` in `right/config.h` picks this screen. Set it in `left/config.h` instead to swap the screens over, or remove it to give both halves the hoard.
+
+### Both halves
+
+Each screen goes off after a minute without a key, and while the computer sleeps.
 
 **Thread.** The screen is drawn and sent from its own thread, not from QMK's main loop:
 - In stock QMK, every write to the OLED holds up the key scan until it finishes, about 1 ms at a time.
@@ -91,7 +111,15 @@ The screen goes off after a minute without a key, and while the computer sleeps.
 
 So QMK's own OLED feature is off and `dragon_screen.c` talks to the SSD1306 directly.
 
-**Changing the art.** Edit `dragon_screen/art.py`, run `python3 make_art.py` in that folder, then rebuild. `poses.png` shows every pose so you can check them.
+**Changing the art.**
+- **Hoard:** edit `dragon_screen/art.py`, run `python3 make_art.py` in that folder, then rebuild. `poses.png` shows every pose.
+- **Flight:** edit `dragon_screen/flight_art.py` (the dragon's body, wings and tail, the land and the clouds) and run it, then rebuild. `flight_parts.png` shows the dragon in each wing and tail position, and `flight_ground.png` the whole map.
+- **Previewing the flight on a PC:** `flight_scene.c` has no QMK dependencies, so it can run on a PC. In `dragon_screen/`:
+  ```
+  cc -O2 -I../qmk/lazydragon64 flight_preview.c -o /tmp/flight_preview
+  /tmp/flight_preview /tmp/frames.bin 30 0      # 30 s, not typing (the last number is the wpm)
+  python3 flight_preview.py /tmp/frames.bin /tmp/flight.gif
+  ```
 
 ## Latency settings
 

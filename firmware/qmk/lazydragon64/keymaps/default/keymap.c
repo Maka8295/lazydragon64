@@ -10,9 +10,14 @@
 // The Lucca-58HE has 29 keys a side; the Lazy Dragon has 32. Its pinky columns sit much
 // lower than the Lazy Dragon's, so they move down a row here: on each half the two outer
 // columns' bottom four keys are the Lucca's pinky keys and their top keys are new
-// (left: play/pause, next track; right: volume down, volume up). The inner key level with
-// the home row is also new and does nothing for now (XXXXXXX); the inner key level with
-// the bottom row is the Lucca's inner key (MO(1) / Kana).
+// (left: play/pause, next track; right: volume down, volume up). The inner keys level with
+// the home row are also new: the left one opens the scratchpad, the right one switches
+// between English and Japanese input. The inner keys below them are the Lucca's inner keys:
+// FN on the left, and on the right Caps Lock (it was Kana, KC_INT2, on the Lucca).
+//
+// On the desktop (Hyprland, ~/Dotfiles/hypr/hyprland.lua) the media keys run cmus-remote,
+// so Play and Next play/pause and skip in cmus; Super+B toggles the scratchpad; and fcitx5
+// switches between English and Japanese (mozc) on Ctrl+Space.
 //
 // Changes from the KMK code:
 //   - LCAP (KMK's locking caps lock, which this KMK version no longer defines) is KC_CAPS.
@@ -23,6 +28,9 @@
 
 enum layers { _BASE, _FN };
 
+#define SCRATCH LGUI(KC_B)  // Super+B: Hyprland's scratchpad
+#define JP_EN   LCTL(KC_SPC) // Ctrl+Space: fcitx5 switches between English and Japanese (mozc)
+
 // clang-format off
 const uint16_t PROGMEM keymaps[][MATRIX_ROWS][MATRIX_COLS] = {
     /*
@@ -31,9 +39,9 @@ const uint16_t PROGMEM keymaps[][MATRIX_ROWS][MATRIX_COLS] = {
      * |------+------+------+------+------+------|                    |------+------+------+------+------+------|
      * | Esc  |   1  |   W  |   E  |   R  |   T  |                    |   Y  |   U  |   I  |   O  |   0  | Del  |
      * |------+------+------+------+------+------+------.      ,------+------+------+------+------+------+------|
-     * | Tab  |   Q  |   S  |   D  |   F  |   G  |      |      |      |   H  |   J  |   K  |   L  |   P  |   =  |
+     * | Tab  |   Q  |   S  |   D  |   F  |   G  |Scrtch|      |EN/JP |   H  |   J  |   K  |   L  |   P  |   =  |
      * |------+------+------+------+------+------+------|      |------+------+------+------+------+------+------|
-     * |RShift|   A  |   X  |   C  |   V  |   B  |  FN  |      | Kana |   N  |   M  |   ,  |   .  |   ;  |   '  |
+     * |RShift|   A  |   X  |   C  |   V  |   B  |  FN  |      | Caps |   N  |   M  |   ,  |   .  |   ;  |   '  |
      * |------+------+------+------+------+------+------'      `------+------+------+------+------+------+------|
      * |LShift|   Z  | Ctrl | Alt  | GUI  | Space  |                | Enter  | Bksp |   [  |   ]  |   /  |   -  |
      * `-----------------------------------------'                `-----------------------------------------'
@@ -41,8 +49,8 @@ const uint16_t PROGMEM keymaps[][MATRIX_ROWS][MATRIX_COLS] = {
     [_BASE] = LAYOUT(
         KC_MPLY, KC_MNXT, KC_2,    KC_3,    KC_4,    KC_5,                                KC_6,    KC_7,    KC_8,    KC_9,    KC_VOLD, KC_VOLU,
         KC_ESC,  KC_1,    KC_W,    KC_E,    KC_R,    KC_T,                                KC_Y,    KC_U,    KC_I,    KC_O,    KC_0,    KC_DEL,
-        KC_TAB,  KC_Q,    KC_S,    KC_D,    KC_F,    KC_G,    XXXXXXX,          XXXXXXX,  KC_H,    KC_J,    KC_K,    KC_L,    KC_P,    KC_EQL,
-        KC_RSFT, KC_A,    KC_X,    KC_C,    KC_V,    KC_B,    MO(_FN),          KC_INT2,  KC_N,    KC_M,    KC_COMM, KC_DOT,  KC_SCLN, KC_QUOT,
+        KC_TAB,  KC_Q,    KC_S,    KC_D,    KC_F,    KC_G,    SCRATCH,          JP_EN,    KC_H,    KC_J,    KC_K,    KC_L,    KC_P,    KC_EQL,
+        KC_RSFT, KC_A,    KC_X,    KC_C,    KC_V,    KC_B,    MO(_FN),          KC_CAPS,  KC_N,    KC_M,    KC_COMM, KC_DOT,  KC_SCLN, KC_QUOT,
         KC_LSFT, KC_Z,    KC_LCTL, KC_LALT, KC_LGUI, KC_SPC,                                KC_ENT,  KC_BSPC, KC_LBRC, KC_RBRC, KC_SLSH, KC_MINS
     ),
 
@@ -58,12 +66,13 @@ const uint16_t PROGMEM keymaps[][MATRIX_ROWS][MATRIX_COLS] = {
      * |------+------+------+------+------+------+------'      `------+------+------+------+------+------+------|
      * |      |      |      |      | Mute |  Play  |                |  Caps  | Mute | Prev | Next | Vol- | Vol+ |
      * `-----------------------------------------'                `-----------------------------------------'
-     * The new top keys pass through (_______), so play/next and volume still work with FN held.
+     * The new top keys, the scratchpad key and the English/Japanese key pass through
+     * (_______), so they still work with FN held.
      */
     [_FN] = LAYOUT(
         _______, _______, KC_F2,   KC_F3,   KC_F4,   KC_F5,                               KC_F6,   KC_F7,   KC_F8,   KC_F9,   _______, _______,
         RM_TOGG, KC_F1,   RM_PREV, RM_NEXT, RM_VALD, RM_VALU,                             XXXXXXX, XXXXXXX, KC_UP,   XXXXXXX, KC_F10,  KC_F11,
-        XXXXXXX, XXXXXXX, XXXXXXX, XXXXXXX, KC_VOLD, KC_VOLU, XXXXXXX,          XXXXXXX,  KC_H,    KC_LEFT, KC_DOWN, KC_RGHT, XXXXXXX, KC_F12,
+        XXXXXXX, XXXXXXX, XXXXXXX, XXXXXXX, KC_VOLD, KC_VOLU, _______,          _______,  KC_H,    KC_LEFT, KC_DOWN, KC_RGHT, XXXXXXX, KC_F12,
         XXXXXXX, XXXXXXX, XXXXXXX, XXXXXXX, KC_MPRV, KC_MNXT, _______,          KC_MPLY,  KC_TILD, KC_BSLS, KC_PIPE, XXXXXXX, XXXXXXX, KC_PSCR,
         XXXXXXX, XXXXXXX, XXXXXXX, XXXXXXX, KC_MUTE, KC_MPLY,                               KC_CAPS, KC_MUTE, KC_MPRV, KC_MNXT, KC_VOLD, KC_VOLU
     )
