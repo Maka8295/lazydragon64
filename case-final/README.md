@@ -51,3 +51,11 @@ From `case-new-outline/`, with `CASE_OUT` set to a scratch directory:
   Take its `Right Ivy Curl Only` output.
 
 Each build takes about 10 minutes. Built 2026-11-14.
+
+## No-dragon versions (2026-11-25)
+
+- `chamfer-no-dragon/` holds the chamfered halves with the underside drawing filled back in: the bottom is plain. Everything else (vine, text, chamfer, screw recesses, standoff pockets) is unchanged.
+- The Lucca58 source STEPs `build_case.py` reads are gone, so these weren't rebuilt. They were made from the `chamfer/` STEPs with `case-new-outline/fill_art.py`, which fills the 0.6 mm engraving exactly (it checks the volume added equals the ceiling area × 0.6):
+  `CASE_IN="../case-final/chamfer/lazydragon64 Case Left Chamfer.step" CASE_OUT="../case-final/chamfer-no-dragon/lazydragon64 Case Left Chamfer No Dragon" freecadcmd -c "exec(open('fill_art.py').read())"`
+- The STLs are closed, with the same two ~0.0001 mm facet crossings as the chamfered files.
+- `lazydragon64_no_dragon_X1C_heavy_overture_matte.3mf` is a Bambu Studio project for an X1C on a Textured PEI plate with Overture Matte PLA: 0.12 mm layers, solid (100% infill, 4 walls), outer wall 60 mm/s at 2000 mm/s² for the vine, Arachne walls, aligned seam. About 184 g and 7.5 h for both halves.
