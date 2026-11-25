@@ -32,6 +32,8 @@ The renders come from KiCad and don't include switches or keycaps.
 
 ## Building
 
+Step-by-step instructions are in [BUILD.md](BUILD.md). The sections below are a quick reference.
+
 ### Which side gets what
 
 Both halves use the same PCB. The RP2040-Zero (U1), the split-link USB-C (J1) and the OLED header (J2) go on one face, and every other part goes on the other.
@@ -67,15 +69,24 @@ J1 is the link between the halves, not a USB port for the computer. Plug the com
 
 ### Case and plate
 
-Hardware per half, the same as the Corne v4:
+Hardware per half, Corne v4 style:
 
-- 1.6 mm FR4 switch plate
-- 4 × M2 × 7.5 mm spacers (3.5 mm hex, or round up to Ø4.0)
-- 8 × M2 × 5 mm screws
+- **Plate:** 1.6 mm FR4 switch plate (Gerbers in [`plate/production/`](plate/production)).
+- **Standoffs:** 4 × M2 × 8 mm female–female (LCSC C50378452). Round ones up to Ø4.0, or 3.5 mm hex.
+- **Screws:** 8 × M2 × 4 mm pan head (LCSC C357393), the same screw at both ends of each standoff. Any M2 head up to 3.5 mm wide and 1.3 mm tall fits.
 
-The spacers screw to the case floor, pass through the Ø5 holes in the PCB, and the plate screws onto them. The PCB hangs from the switches.
+The standoffs screw to the case floor and sit in pockets that set the plate at its designed height. They pass through the Ø5 holes in the PCB, and the plate screws onto them. The PCB hangs from the switches. Use 8 mm standoffs, not 7.5 mm: shorter ones put the hot-swap sockets on the case floor. [`case-final/README.md`](case-final/README.md#mounting-hardware-corne-v4-style) has the details.
 
-The case STEP and STL files are in [`case-new-outline/`](case-new-outline). Each half comes in several variants:
+The finished cases (print bottom-down):
+
+| Folder | Description |
+|---|---|
+| [`case-final/`](case-final) | Ivy Curl vine wrap, "Lazy Dragon" on the front wall, dragon engraved underneath |
+| `case-final/chamfer/` | the same with a 1 mm chamfer on the top outer edge, plus an X1C print project |
+| `case-final/chamfer-no-dragon/` | chamfered, with a plain underside, plus an X1C print project |
+| [`marika cases/`](marika%20cases) | moon-phase band instead of the vine, with its own `chamfer/` versions |
+
+[`case-new-outline/`](case-new-outline) holds the generator and the earlier variants:
 
 | Variant | Description |
 |---|---|
@@ -92,12 +103,16 @@ QMK, in [`firmware/`](firmware). Flash `lazydragon64_left.uf2` to the left half 
 
 | Path | Contents |
 |---|---|
+| `BUILD.md` | step-by-step build guide |
 | `lazydragon64.kicad_*` | schematic and PCB (KiCad 10) |
+| `production/` | PCB fabrication files |
 | `lcsc_cart.csv` | LCSC parts cart |
 | `images/` | renders used in this README |
 | `firmware/` | QMK firmware: `.uf2` files for each half and the keyboard source |
 | `plate/` | `Lucca58 Stagger Plate` FR4 switch plate, `marikaplate` alternative plate, and their Gerber zips in `production/` |
-| `case-new-outline/` | case generator scripts, art data, and STEP/STL files for every case variant |
+| `case-final/` | the finished cases (STEP/STL), chamfered and plain-underside versions, and X1C print projects |
+| `marika cases/` | the moon-phase cases |
+| `case-new-outline/` | case generator scripts, art data, and STEP/STL files for the earlier case variants |
 | `case-new-outline/3d models/` | PCB, plate and spacer STEPs, plus the assembled left half |
 
 The case scripts run under FreeCAD:
