@@ -1,6 +1,10 @@
 // Lazy Dragon 64: the dragon screen on each half's 0.91" OLED.
 // SPDX-License-Identifier: GPL-2.0-or-later
 //
+// Each half picks its screen in its own config.h. With LD64_SCREEN_FLIGHT set (the right
+// half) the screen shows the dragon flying over the land, seen from above (flight_scene.c).
+// Otherwise (the left half) it shows the dragon on its hoard with the indicators below.
+//
 // The screen stands upright, so everything here is drawn on a 32 x 128 portrait canvas:
 //
 //   y   0-10   layer, in a pill (filled when you're off the base layer)
@@ -26,6 +30,7 @@
 #include <ch.h>
 #include <string.h>
 #include "dragon_art.h"
+#include "flight_scene.h"
 
 #ifndef LD64_OLED_ADDRESS
 #    define LD64_OLED_ADDRESS 0x3C // 7-bit address of the 0.91" SSD1306 modules
@@ -42,8 +47,11 @@
 #ifndef LD64_OLED_CONTRAST
 #    define LD64_OLED_CONTRAST 0xFF
 #endif
+#ifndef LD64_SCREEN_FLIGHT
+#    define LD64_SCREEN_FLIGHT 0 // 1: the flying dragon instead of the hoard and indicators
+#endif
 
-#define FRAME_MS 50
+#define FRAME_MS (LD64_SCREEN_FLIGHT ? 33 : 50) // the flight scrolls, so it runs at 30 fps
 #define I2C_TIMEOUT_MS 50
 #define SCENE_Y 16
 #define BARS_BOTTOM 82
@@ -174,6 +182,10 @@ static void draw_bars(void) {
 static uint32_t kick_at, frames;
 
 static void draw_frame(uint32_t t, bool kick) {
+    if (LD64_SCREEN_FLIGHT) {
+        flight_draw(fb, t, get_current_wpm());
+        return;
+    }
     uint8_t layer  = get_highest_layer(layer_state | default_layer_state);
     bool    caps   = host_keyboard_led_state().caps_lock;
     uint8_t wpm    = get_current_wpm();

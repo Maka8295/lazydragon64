@@ -11,3 +11,7 @@
 
 /* OLED orientation: upside down at 0 on the first built right half (2026-11-25). */
 #define LD64_OLED_FLIP 1
+
+/* Screen: the dragon flying over the land, seen from above (flight_scene.c). The left
+ * half keeps the dragon on its hoard with the layer, WPM and Caps Lock indicators. */
+#define LD64_SCREEN_FLIGHT 1
