@@ -59,3 +59,40 @@ Each build takes about 10 minutes. Built 2026-11-14.
   `CASE_IN="../case-final/chamfer/lazydragon64 Case Left Chamfer.step" CASE_OUT="../case-final/chamfer-no-dragon/lazydragon64 Case Left Chamfer No Dragon" freecadcmd -c "exec(open('fill_art.py').read())"`
 - The STLs are closed, with the same two ~0.0001 mm facet crossings as the chamfered files.
 - `lazydragon64_no_dragon_X1C_heavy_overture_matte.3mf` is a Bambu Studio project for an X1C on a Textured PEI plate with Overture Matte PLA: 0.12 mm layers, solid (100% infill, 4 walls), outer wall 60 mm/s at 2000 mm/s² for the vine, Arachne walls, aligned seam. About 184 g and 7.5 h for both halves.
+
+## Top covers (2026-11-26)
+
+`cover/lazydragon64 Cover Left/Right.step` / `.stl`: a plain lid for each half that rests on the case rim and closes over the keys.
+
+- **Fit:**
+  - The lid's walls carry the case's own walls straight up, so it sits flush all round.
+  - Its underside is one flat, unbroken rim: nothing reaches down into the case.
+  - Over the USB notch the rim just runs across. The notch stays open below it, so the cables can stay plugged in.
+  - Nothing holds the lid sideways but its own weight.
+- **Edge:** the outer top edge is chamfered 1 mm × 45°, like the `chamfer/` cases.
+- **Height:**
+  - The lid is 14.3 mm tall.
+  - Inside, the ceiling is 18.9 mm above the plate, about 2.7 mm over XDA keycaps on MX switches. That figure is estimated: stem top ~11.6 mm above the plate, cap top ~4.6 mm above that.
+  - For taller caps, rebuild with a higher `COVER_CEIL`.
+- **Fit check:** checked against all three left cases and the PCB assembly in `case-new-outline/3d models/`.
+  - There is no overlap with any case or with any part in the assembly.
+  - The lid covers the whole rim. On the chamfered cases its outer 1 mm sits over their chamfer, which leaves a small V-groove at the join.
+  - The closest part is the RP2040-Zero's USB-C: 0.54 mm from the lid's inner wall and 11 mm below the ceiling.
+  - The assembly has no switches, keycaps or OLED, so the keycap clearance above is an estimate.
+- **Top:**
+  - The Lazy Dragon drawing is engraved 0.6 mm, about 135 × 72 mm: the largest that fits 3 mm inside the edge. The width is the limit.
+  - Each lid has its own unmirrored copy.
+  - The coin pile is simplified for printing:
+    - the loose marks in the pile are gone;
+    - the specks and thin strands of land between coins are engraved;
+    - every coin (65 of them) is redrawn as a clean oval, so the hoard prints as plain round islands in an engraved bed;
+    - coins too small for an oval, or crossed by a bar, become solid engraved dots (14 of them).
+  - The dragon, the crown, goblet, gem, sword, chest and the lettering are as drawn.
+- **Printing:**
+  - Print top-down: the drawing goes on the plate, like the case undersides, and nothing needs support.
+  - About 72 g each, solid.
+  - Use the same slicer settings as the no-dragon case project: Arachne, `filter_out_gap_fill`, Textured PEI.
+- **Rebuilding:** from `case-new-outline/`:
+  `freecadcmd -c "exec(open('build_cover.py').read())"`
+  (2D art and the chamfer offset in `cover_art.py`). It takes about 4 minutes.
+  - `COVER_WINDOWS=1` puts back the raised gothic windows (from `window.png`, traced into `window_art.json`), 42 per lid on the straight runs of wall.
