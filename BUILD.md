@@ -112,6 +112,10 @@ There are Bambu Studio projects for an X1C (Textured PEI plate, Overture Matte P
 - `chamfer-no-dragon/lazydragon64_no_dragon_X1C_heavy_overture_matte.3mf`, at 0.12 mm layers
 - `chamfer/lazydragon64_chamfer_X1C_heavy_overture_matte.3mf`, the dragon version, at 0.16 mm
 
+**Lids:** [`case-final/cover/`](case-final/cover) has a lid for each half. It sits on the case rim and covers the keys, with the dragon engraved on top.
+- Print each lid top-down. `cover/lazydragon64_cover_X1C_heavy_overture_matte.3mf` has both, set up that way, with the same settings: about 138 g and 6 h.
+- The lid's inside clears XDA keycaps by about 2.7 mm. That figure is estimated, so check it with your caps.
+
 ## 7. Assembling the case
 
 Per half: 4 standoffs, 4 floor screws and 4 plate screws.

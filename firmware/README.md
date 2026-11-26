@@ -7,7 +7,7 @@
 | `qmk/lazydragon64/` | the QMK keyboard: shared settings in `info.json` and `config.h`, per-half pins in `left/` and `right/`, keymap in `keymaps/default/keymap.c` |
 | `build.sh` | copies `qmk/lazydragon64` into a QMK checkout and builds both halves |
 | `gen_layout.py` | rewrites the key layout and the LED map in `info.json` from the KiCad board |
-| `dragon_screen/` | the OLED pixel art: `art.py` and `make_art.py` for the left half's screen (`dragon_art.h`), `flight_art.py` for the right half's (`flight_art.h`), and a PC preview of the right half's animation |
+| `dragon_screen/` | the OLED pixel art: `art.py` and `make_art.py` for the left half's screen (`dragon_art.h`), `flight_art.py` for the right half's (`flight_art.h`), and PC previews of both screens' animations (`hoard_preview.c`, `flight_preview.c`) |
 
 Each half needs its own file. The reversible board mirrors the RP2040-Zero, so the matrix and the OLED's I2C sit on different GPIOs on each half. The file also fixes which half is which, so nothing has to be set up after flashing.
 
@@ -114,12 +114,28 @@ So QMK's own OLED feature is off and `dragon_screen.c` talks to the SSD1306 dire
 **Changing the art.**
 - **Hoard:** edit `dragon_screen/art.py`, run `python3 make_art.py` in that folder, then rebuild. `poses.png` shows every pose.
 - **Flight:** edit `dragon_screen/flight_art.py` (the dragon's body, wings and tail, the land and the clouds) and run it, then rebuild. `flight_parts.png` shows the dragon in each wing and tail position, and `flight_ground.png` the whole map.
-- **Previewing the flight on a PC:** `flight_scene.c` has no QMK dependencies, so it can run on a PC. In `dragon_screen/`:
+- **Previewing on a PC:** both screens' drawing code runs on a PC, and `flight_preview.py` turns the frames into a GIF. In `dragon_screen/`:
   ```
   cc -O2 -I../qmk/lazydragon64 flight_preview.c -o /tmp/flight_preview
   /tmp/flight_preview /tmp/frames.bin 30 0      # 30 s, not typing (the last number is the wpm)
   python3 flight_preview.py /tmp/frames.bin /tmp/flight.gif
   ```
+  - `flight_scene.c` has no QMK dependencies.
+  - `hoard_preview.c` runs `dragon_screen.c` against the stand-ins in `preview_stubs/`, through a 17 s scripted demo: asleep, typing, typing fast, Caps Lock, then FN.
+    ```
+    cc -O2 -Ipreview_stubs -I../qmk/lazydragon64 hoard_preview.c -o /tmp/hoard_preview
+    /tmp/hoard_preview /tmp/hoard.bin
+    ```
+    Its frames are 50 ms apart, so make the GIF with 50 ms per frame. The README's `images/oled-hoard.gif` was made this way.
+
+## Lighting
+
+The default effect is **Dungeon Breath** (`qmk/lazydragon64/rgb_matrix_kb.inc`), in the dungeonOS colours:
+- **At rest:** the keys glow a dim olive moss.
+- **Each breath:** they swell to amber brass, and the swell rolls left to right across both halves. A breath takes about 4 s at the default speed.
+- **Controls:** FN + Brght−/+ sets the peak brightness, and FN + Effect−/+ steps to QMK's other effects.
+
+New defaults only apply over cleared settings. To return to them, hold the top outer key while plugging the half in.
 
 ## Latency settings
 
@@ -145,8 +161,8 @@ Adjust if needed:
 ## Check on first power-up
 
 - **OLED orientation.** The picture is drawn upright for a module standing lengthwise over the RP2040-Zero. If it is upside down, flip `LD64_OLED_FLIP` in that half's `left/config.h` or `right/config.h` (both halves ship flipped). `LD64_OLED_SHIFT` in `config.h` moves the picture sideways a pixel at a time.
-- **LED current.** All 64 LEDs run from one USB port. The colour and brightness carry over from the Lucca-58HE: hue 0, saturation 100, brightness 100 out of 255, and capped at 100.
-  - That colour draws about 0.8 A for the whole keyboard (SK6812MINI-E: 12 mA per colour at full). Full white at the cap draws about 1 A.
+- **LED current.** All 64 LEDs run from one USB port. The default is the Dungeon Breath effect (below) at brightness 50 out of 255, with the brightness capped at 100.
+  - At the cap, full white draws about 1 A for the whole keyboard (SK6812MINI-E: 12 mA per colour at full). The default breath draws far less.
   - Most desktop ports supply that, but it is above USB 2.0's 500 mA. If a laptop port cuts out, turn the brightness down (FN + Brght-) or lower `max_brightness` in `info.json`.
   - The LEDs switch off when the computer sleeps.
 
