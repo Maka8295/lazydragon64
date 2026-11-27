@@ -7,7 +7,8 @@
 # band, text, dragon, screw recesses and standoff pockets). Only the edge where the
 # outer wall meets the rim top is chamfered; the inner top edge and every bottom edge
 # stay square. The wall decorations stop below the chamfer: the Ivy Curl band reaches
-# z = 13.87 (16.63 mm tall about z = 5.55) and the moon band's sun rays z = 12.59, while
+# z = 13.87 (16.63 mm tall about z = 5.55) and the moon band's sun rays z = 12.08 (12.59
+# before 2026-11-28), while
 # a 1 mm chamfer starts at z = 14.1. Above CASE_CHAMFER = 1.2 it would cut the ivy.
 import os, time
 import FreeCAD as App, Part, Mesh

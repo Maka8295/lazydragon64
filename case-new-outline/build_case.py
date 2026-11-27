@@ -453,28 +453,38 @@ IVY_NAME = os.environ.get("CASE_IVY_NAME", " Ivy")
 PLAQUE_PAD, PLAQUE_R, NOTCH_PAD = (3.0, 1.5), 2.0, 1.0      # mm
 # 2026-11-16, Marika cases: CASE_BAND=moon wraps the moon-phase band of moon_band.py
 # (design B of ~/Downloads/image0(1).png) instead of a traced ivy tile. It goes through
-# the same unrolled-band path below (facet strips, corner wedges, checks). The jogs in
-# the wall are left bare and every straight section between them, the text and the
-# notch gets its own centred arrangement (see moon_band.layout). CASE_MOON_K is the
-# scale in mm per source pixel. The crescent inside each sun opens to the right as seen
+# the same unrolled-band path below (facet strips, corner wedges, checks). Since
+# 2026-11-28 every straight face of wall gets one centred, mirror-symmetric group (the
+# design trimmed to fit), and the corners, jogs, text and notch are left bare (see
+# moon_band.layout). CASE_MOON_K is the one scale, in mm per source pixel, for every
+# glyph on the case: 0.0975 fits the whole design on the 76 mm inner wall (it was 0.105). The crescent inside each sun opens to the right as seen
 # from outside, like the design (CASE_MOON_SUN_OPEN=-1: to the left). The band's s runs
 # right to left along the outside of the left half's walls, so the band is drawn with
 # the crescent reversed for the left half; an IVY_ONLY build is used for its mirrored
 # right half, and the mirror turns it back, so that one is drawn the right way round.
 BAND = os.environ.get("CASE_BAND", "ivy")
 assert BAND in ("ivy", "moon"), "CASE_BAND must be ivy or moon"
-MOON_K = float(os.environ.get("CASE_MOON_K", "0.105"))
+MOON_K = float(os.environ.get("CASE_MOON_K", "0.0975"))
 MOON_SUN_OPEN = int(os.environ.get("CASE_MOON_SUN_OPEN", "1"))
 # 2026-11-11 second version: CASE_IVY_ART=ivy_minimalist.json CASE_IVY_NAME=" Ivy Minimalist".
 # That tile (make_ivy_tile.py, ~/Downloads/Minimalist Ivy Vine Divider.png) alternates
 # normal and upside-down copies, and its zones end only on bare stem (cut_ok).
 
 def unrolled():
+    # Edges that carry straight on (within 1e-4 rad, 0.006 deg) are merged into one. The
+    # outline's front wall is two such edges, 0.0003 deg apart; when a moon-band element
+    # ended 0.01 mm past their joint, the filler wedge there came out flat and the band on
+    # that wall didn't fuse cleanly (815 crossing facets in the STL, 2026-11-28).
     pts = [V(x, y, 0) for x, y in O]; n = len(pts); edges = []; s = 0.0
     for i in range(n):
         a, b = pts[i], pts[(i + 1) % n]; L = (b - a).Length
         if L < 1e-6: continue
-        t = (b - a) * (1.0 / L); nrm = V(t.y, -t.x, 0); mid = (a + b) * 0.5
+        t = (b - a) * (1.0 / L)
+        if edges:
+            a0, t0, n0, s0, s1 = edges[-1]
+            if abs(t0.x * t.y - t0.y * t.x) < 1e-4 and t0.dot(t) > 0 and (a0 + t0 * (s1 - s0) - a).Length < 1e-6:
+                edges.pop(); s = s0; a = a0; L = (b - a).Length; t = (b - a) * (1.0 / L)
+        nrm = V(t.y, -t.x, 0); mid = (a + b) * 0.5
         if inside_O(mid.x + nrm.x * 0.05, mid.y + nrm.y * 0.05): nrm = nrm * -1
         edges.append((a, t, nrm, s, s + L)); s += L
     return edges, s

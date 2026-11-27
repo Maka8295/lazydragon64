@@ -10,14 +10,11 @@
 # Coordinates: u along the wall (arc length, mm), v up the wall (mm). build_case.py
 # turns them into faces; preview() rasterises them.
 #
-# Layout: the clear zones (front text, USB notch) split the band into stretches. Each
-# stretch holds a whole number of motifs. Element sizes never change; the spacing
-# factor f (inside a motif), the join between motifs and the end margins absorb the
-# length, chosen so no sun lands on a rounded corner. A long join gets a star, or a
-# diamond-star-diamond group, so it doesn't read as a gap.
+# Layout: one centred, mirror-symmetric group per straight face of wall, and only one sun
+# on each side of the case (see layout()).
 import math
 
-MOON_K = 0.100            # mm per source pixel: sun 12.6 mm across the long rays, moons 5.1 mm
+MOON_K = 0.0975           # mm per source pixel: sun 13.1 mm across, moons 5.0 mm (build_case.py passes CASE_MOON_K)
 
 # ---- primitives (source pixels) ---------------------------------------------------
 def _hull(pts):
@@ -96,9 +93,8 @@ def sun(open_dir=+1):
 # except the diamond and dash sit 1.5 px further from the star so their gaps are 0.7 mm)
 DASH_U, STAR_U = 352.8, 317.3
 HALF = [("full", 107.5), ("thick", 172.5), ("thin", 234.3), ("diamond", 285.0), ("star", STAR_U), ("dash", DASH_U)]
-HALF_W = {"full": R_MOON, "thick": R_MOON, "thin": R_MOON, "diamond": 10.0, "star": 14.5, "dash": 14.1}
-MOTIF_SPAN = 2 * DASH_U     # first to last element centre
-JOIN_MIN = 40.0             # dash centre to dash centre between neighbouring motifs (tips 12 px apart)
+# how far each element reaches from its centre along the wall (source px)
+HALF_MM = {"sun": SUN_LONG_CARD, "full": R_MOON, "thick": R_MOON, "thin": R_MOON, "diamond": 10.0, "star": 14.5, "dash": 14.1}
 
 def element(kind, side=+1, sun_open=+1):
     if kind == "sun": return sun(sun_open)
@@ -116,21 +112,15 @@ def motif(sun_open=+1):
             out.append((side * u, kind, side))
     return sorted(out)
 
-def join_fill(J):
-    """elements between two motifs whose dash centres are J px apart, from the join centre"""
-    if J >= 126: return [(-30.8, "diamond"), (0.0, "star"), (30.8, "diamond")]
-    if J >= 70: return [(0.0, "star")]
-    return []
-
 def scale_parts(parts, k, du, dv):
     def sp(pr):
         if pr[0] == "c": return ("c", du + k * pr[1], dv + k * pr[2], k * pr[3])
         return ("p", [(du + k * x, dv + k * y) for x, y in pr[1]])
     return [(sp(a), [sp(s) for s in subs]) for a, subs in parts]
 
-# Short wall sections take one centred group instead of whole motifs: the motif's core
-# (sun with 0-3 moons a side, then diamond and star), or a sunless moon group (full moon
-# with crescents lit towards it), or star groups. Same spacing as in the motif.
+# Groups smaller than the whole motif: its core (the sun with 0-5 elements a side), or a
+# sunless moon group (full moon with crescents lit towards it), or a lone star. Same
+# spacing as in the motif.
 def _sym(centre, pairs):
     out = [(0.0, centre, 0)] if centre else []
     for kind, u in pairs:
@@ -144,145 +134,131 @@ for _i in range(len(_CORE) + 1):
 for _i in range(len(_MOONS) + 1):
     VARIANTS["moon+%d" % _i] = _sym("full", _MOONS[:_i])
 VARIANTS["star"] = [(0.0, "star", 0)]
-VARIANTS["diamond-star-diamond"] = [(-32.3, "diamond", 0), (0.0, "star", 0), (32.3, "diamond", 0)]
-
-def variant_halfspan(name):
-    return max(abs(u) + HALF_MM[kind] for u, kind, _ in VARIANTS[name])
 
 # ---- layout ---------------------------------------------------------------------
-def stretch_layout(a, b, n, f, J, m0, k):
-    """[(s, kind, side)] for n motifs from s = a + m0, motif spacing f, joins J px"""
+# 2026-11-28: one symmetric arrangement per wall face. The band is cut at every corner
+# (rounded or stepped) and at the clear zones (front text, USB notch); each straight
+# piece of wall left over gets one group, centred on it and mirror-symmetric, so every
+# face of the case reads as balanced on its own. The group is the design itself trimmed
+# from the outside in until it fits: the whole motif on the long walls, then the sun
+# with fewer moons, then a lone sun; faces too short for that stay plain. The
+# glyphs are the same size everywhere (one scale k for the whole case) and the spacing
+# inside a group is always the design's, so faces differ only in how much of the motif
+# they show. (The 2026-11-16 layout filled each stretch between zones with motifs
+# chained across the rounded corners, which left them off-centre.)
+# No lone glyphs (2026-11-28): a face too short for a sun, or a moon with its crescents,
+# stays plain rather than carrying a single moon or star.
+GROUPS = ["motif", "sun+5", "sun+3", "sun+2", "sun+1", "sun+0", "moon+1"]
+MARGIN = 1.5          # mm of bare wall between a group and a corner or zone, at least
+
+def group(name):
+    """[(u_px, kind, side)] of a named group, centred on 0"""
+    return motif() if name == "motif" else VARIANTS[name]
+
+def group_halfspan(name):
+    return max(abs(u) + HALF_MM[kind] for u, kind, _ in group(name))
+
+def faces(P, zones, corners):
+    """the straight pieces of wall that are clear of every corner and zone, as s-intervals"""
+    cuts = sorted([(a % P, (a % P) + (b - a)) for a, b in zones] + [(a % P, (a % P) + (b - a)) for a, b, _ in corners])
+    merged = []
+    for a, b in cuts:
+        if merged and a <= merged[-1][1]: merged[-1][1] = max(merged[-1][1], b)
+        else: merged.append([a, b])
+    # a cut running past P wraps onto the start
+    while len(merged) > 1 and merged[-1][1] - P >= merged[0][0]:
+        merged[0][0] = min(merged[0][0], merged[-1][0] - P); merged[0][1] = max(merged[0][1], merged[-1][1] - P); merged.pop()
     out = []
-    s = a + m0 + k * HALF_W["dash"] + k * f * DASH_U       # first sun
-    for j in range(n):
-        for u, kind, side in motif():
-            out.append((s + k * f * u, kind, side))
-        if j < n - 1:
-            mid = s + k * (f * DASH_U + J / 2)
-            for u, kind in join_fill(J):
-                out.append((mid + k * u, kind, 0))
-            s += k * (2 * f * DASH_U + J)
+    for i in range(len(merged)):
+        a = merged[i][1]
+        b = merged[i + 1][0] if i + 1 < len(merged) else merged[0][0] + P
+        if b - a > 0.0: out.append((a, b))
     return out
 
-HALF_MM = {"sun": SUN_LONG_CARD, "full": R_MOON, "thick": R_MOON, "thin": R_MOON, "diamond": 10.0, "star": 14.5, "dash": 14.1}
-# penalty for an element overlapping a corner of each kind; a sun may sit on a plain
-# rounded corner only if it is centred there (like the corner sun in the design sheet)
-PENALTY = {"sun": (1000, 1000), "full": (2, 150), "thick": (2, 150), "thin": (2, 150),
-           "star": (0, 8), "diamond": (0, 8), "dash": (0, 8)}     # (convex corner, step)
+def walls(P, corners):
+    """The case's sides as you see them: s-intervals between consecutive rounded corners
+    (the jogs, the text and the notch don't split a side)."""
+    cv = sorted((a % P, (a % P) + (b - a)) for a, b, kind in corners if kind == "convex")
+    return [(cv[i][1], cv[i + 1][0] if i + 1 < len(cv) else cv[0][0] + P) for i in range(len(cv))]
 
-def layout(P, zones, corners, k=MOON_K, sun_open=+1, log=print):
-    """Place motifs in every stretch between zones (s-intervals, wrapping at P).
-    corners: (a, b, kind) s-intervals of wall that isn't straight; kind "convex" is a
-    plain rounded corner, "step" is a jog in the wall (S-bend), where elements break up.
-    Each join between motifs is chosen on its own (dynamic programming over the sun
-    positions), so the suns can dodge the corners without stretching the motifs.
-    Returns [(s_centre, kind, parts_mm)] and a list of per-stretch summaries."""
-    zs = sorted(((lo % P, (lo % P) + (hi - lo)) for lo, hi in zones))
-    stretches = []
-    for i, (lo, hi) in enumerate(zs):
-        nlo = zs[(i + 1) % len(zs)][0] + (P if i + 1 == len(zs) else 0)
-        stretches.append((hi, nlo))
-    cs = [(ca + w, cb + w, kind) for ca, cb, kind in corners for w in (-P, 0, P, 2 * P)]
-    def penalty(s, kind):
-        h = k * HALF_MM[kind] + 0.3; pen = 0.0
-        for ca, cb, ck in cs:
-            if s + h > ca and s - h < cb:
-                if kind == "sun" and ck == "convex" and abs(s - (ca + cb) / 2) < 1.0: pen += 15
-                else: pen += PENALTY[kind][1 if ck == "step" else 0]
-        return pen
-    GRID, JSTEP, MMIN, MMAX = 0.5, 4, 1.5, 12.0
-    mcost = lambda m: 0.3 * max(0.0, m - 4.0) ** 2        # bare wall at the ends of a stretch
-    placed, summary = [], []
-    for a, b in stretches:
-        L = b - a; best = None
-        for fi in range(0, 21, 4):
-            f = 1.0 + 0.01 * fi
-            hm = k * (f * DASH_U + HALF_W["dash"])           # sun to the outer tip of its dash
-            mot = [(k * f * u, kind) for u, kind, _ in motif()]
-            npos = int((L - 2 * hm - 2 * MMIN) / GRID) + 1
-            if npos < 1: continue
-            pos = [a + MMIN + hm + i * GRID for i in range(npos)]
-            mpen = [sum(penalty(sp + du, kind) for du, kind in mot) for sp in pos]
-            # joins: J px between the two dashes, or "S" = shared (the two motifs overlap so
-            # their outer stars coincide: one star between the two diamonds, no dashes)
-            Js = ["S"] + list(range(int(JOIN_MIN), 241, JSTEP))
-            jcost = {"S": (int(round(k * f * 2 * STAR_U / GRID)), 0.5, [(k * f * STAR_U, "star")])}
-            for J in Js[1:]:
-                D = k * (2 * f * DASH_U + J)
-                jcost[J] = (int(round(D / GRID)), 2.0 * ((J - 50) / 100) ** 2, [(k * (f * DASH_U + J / 2) + k * u, kd) for u, kd in join_fill(J)])
-            # DP: cost[i] of a chain ending with a sun at pos[i]; start margin in [MMIN, MMAX]
-            INF = float("inf")
-            cost = [mpen[i] + mcost(pos[i] - hm - a) if pos[i] - hm - a <= MMAX else INF for i in range(npos)]
-            back = [[None] * npos]
-            for n in range(1, 12):
-                # close the chain here: end margin in [MMIN, MMAX]
-                for i in range(npos):
-                    if cost[i] < INF and b - pos[i] - hm <= MMAX:
-                        m0 = None
-                        c = cost[i] + 100 * (f - 1.0) ** 2 + mcost(b - pos[i] - hm)
-                        if best is None or c < best[0]:
-                            best = (c, f, n, i, [row[:] for row in back], cost[:], pos[:])
-                nxt = [INF] * npos; bk = [None] * npos
-                for i in range(npos):
-                    if cost[i] == INF: continue
-                    for J in Js:
-                        di, jc, fill = jcost[J]
-                        t = i + di
-                        if t >= npos: break
-                        c = cost[i] + jc + mpen[t] + sum(penalty(pos[i] + du, kd) for du, kd in fill)
-                        if c < nxt[t]: nxt[t] = c; bk[t] = (i, J)
-                if all(c == INF for c in nxt): break
-                cost = nxt; back.append(bk)
-        # one centred group instead, for sections too short for whole motifs
-        single = None
-        for name, els in VARIANTS.items():
-            hs = k * max(abs(u) + HALF_MM[kind] for u, kind, _ in els)
-            lo, hi = a + MMIN + hs, b - MMIN - hs
-            if hi < lo: continue
-            for i in range(int((hi - lo) / GRID) + 1):
-                sc = lo + i * GRID
-                m0, m1 = sc - hs - a, b - sc - hs
-                pen = sum(penalty(sc + k * u, kind) for u, kind, _ in els)
-                c = pen + mcost(m0) + mcost(m1) + 0.05 * (m0 - m1) ** 2 + (0.0 if name.startswith("sun") else 1.0)
-                if single is None or c < single[0]: single = (c, name, sc, m0, m1, pen)
-        if single is not None and (best is None or single[0] < best[0]):
-            c, name, sc, m0, m1, pen = single
-            items = [(sc + k * u, kind, side) for u, kind, side in VARIANTS[name]]
-            bad = [(kind, round(x % P, 1)) for x, kind, _ in items if penalty(x, kind) >= 10]
-            summary.append(dict(start=a, end=b, length=L, group=name, centre=round(sc % P, 1), margins=(m0, m1), flagged=bad, cost=c))
-            log("moon stretch %.1f-%.1f (%.1f mm): group %s at %.1f, margins %.1f / %.1f mm, cost %.1f, flagged %s"
-                % (a, b, L, name, sc % P, m0, m1, c, bad))
-            for x, kind, side in items:
-                placed.append((x % P, kind, scale_parts(element(kind, side, sun_open), k, x % P, 0.0)))
+def has_sun(name):
+    return bool(name) and (name == "motif" or name.startswith("sun"))
+
+def layout(P, zones, corners, k=MOON_K, sun_open=+1, one_sun=True, log=print):
+    """Place one centred, symmetric group on every wall face.
+    zones: s-intervals kept bare (text, notch, wall jogs); corners: (a, b, kind) s-intervals
+    of wall that isn't straight. With one_sun (2026-11-28, "where there are several suns,
+    plain looks better, except the main one"), each side of the case keeps only the sun
+    nearest its middle; the other faces on that side that would have had a sun are left
+    plain. Returns [(s_centre, kind, parts_mm)] and per-face summaries."""
+    plan = []
+    for a, b in faces(P, zones, corners):
+        L = b - a
+        name = next((g for g in GROUPS if 2 * k * group_halfspan(g) <= L - 2 * MARGIN), None)
+        if name is None:
+            if L >= 2.0: log("moon face %.1f-%.1f (%.1f mm): too short, left bare" % (a % P, b % P, L))
             continue
-        if best is None:
-            log("moon stretch %.1f-%.1f (%.1f mm): nothing fits, left bare" % (a, b, L)); continue
-        c, f, n, i, back, _, pos = best
-        suns, joins = [pos[i]], []
-        for row in reversed(back[1:n]):
-            i, J = row[i]; suns.append(pos[i]); joins.append(J)
-        suns.reverse(); joins.reverse()
-        hm = k * (f * DASH_U + HALF_W["dash"])
-        items = []
-        for j, sc in enumerate(suns):
-            shared = {-1: j > 0 and joins[j - 1] == "S", +1: j < len(joins) and joins[j] == "S"}
-            items += [(sc + k * f * u, kind, side) for u, kind, side in motif()
-                      if not (side and shared[side] and kind in ("dash", "star"))]
-            if j < len(joins):
-                if joins[j] == "S":
-                    items.append((sc + k * f * STAR_U, "star", 0))
-                else:
-                    mid = sc + k * (f * DASH_U + joins[j] / 2)
-                    items += [(mid + k * u, kd, 0) for u, kd in join_fill(joins[j])]
-        bad = [(kind, round(s % P, 1)) for s, kind, _ in items if penalty(s, kind) >= 10]
-        m0, m1 = suns[0] - hm - a, b - suns[-1] - hm
-        summary.append(dict(start=a, end=b, length=L, motifs=n, spacing=f, joins_mm=[J if J == "S" else round(J * k, 1) for J in joins],
-                            margins=(m0, m1), suns=[round(x % P, 1) for x in suns], on_steps=bad, cost=c))
-        log("moon stretch %.1f-%.1f (%.1f mm): %d motifs, spacing x%.2f, joins %s mm, margins %.1f / %.1f mm, suns at %s, cost %.1f, flagged %s"
-            % (a, b, L, n, f, [J if J == "S" else round(J * k, 1) for J in joins], m0, m1, [round(x % P, 1) for x in suns], c, bad))
-        for s, kind, side in items:
-            placed.append((s % P, kind, scale_parts(element(kind, side, sun_open), k, s % P, 0.0)))
+        plan.append([a, b, name])
+    if one_sun:
+        for wa, wb in walls(P, corners):
+            W = wb - wa
+            on = [f for f in plan if has_sun(f[2]) and ((f[0] + f[1]) / 2 - wa) % P <= W]
+            if len(on) < 2: continue
+            main = min(on, key=lambda f: abs(((f[0] + f[1]) / 2 - wa) % P - W / 2))
+            for f in on:
+                if f is not main:
+                    log("moon face %.1f-%.1f: left plain, the side %.1f-%.1f keeps its main sun at %.1f"
+                        % (f[0] % P, f[1] % P, wa % P, wb % P, ((main[0] + main[1]) / 2) % P))
+                    f[2] = None
+    placed, summary = [], []
+    for a, b, name in plan:
+        if name is None: continue
+        L = b - a; c = (a + b) / 2
+        m = L / 2 - k * group_halfspan(name)
+        summary.append(dict(start=a % P, end=b % P, length=L, group=name, centre=c % P, margin=m))
+        log("moon face %.1f-%.1f (%.1f mm): %s centred at %.1f, %.1f mm bare each end" % (a % P, b % P, L, name, c % P, m))
+        for u, kind, side in group(name):
+            x = (c + k * u) % P
+            placed.append((x, kind, scale_parts(element(kind, side, sun_open), k, x, 0.0)))
+    if one_sun:
+        for x, kind, side, info in flanks(plan, P, k):
+            if info: summary.append(info); log(info["log"])
+            placed.append((x % P, kind, scale_parts(element(kind, side, sun_open), k, x % P, 0.0)))
     return placed, summary
+
+# 2026-11-28 (the user's sketch of the back wall): where a side's only sun stands alone on a
+# short face between two jogs (the back wall's raised middle) and the faces either side were
+# left plain, those two faces carry the rest of the design as the two halves of one motif:
+# outwards from the sun, a full moon, two crescents, the diamond, the star and the dash, at
+# the design's spacing (the diamond and star were left out at first and put back the same
+# day). Both halves sit the same distance from the sun, moved out just far enough that the
+# full moons clear the jogs by MARGIN; if either half then doesn't fit its face, both faces
+# stay plain.
+FLANK = HALF
+
+def flanks(plan, P, k):
+    """[(s, kind, side, summary or None)] for the flanking halves (see FLANK)."""
+    out = []
+    inner = k * min(u - HALF_MM[kind] for kind, u in FLANK)     # sun centre to the full moon's near edge
+    outer = k * max(u + HALF_MM[kind] for kind, u in FLANK)     # ... to the dash's far end
+    n = len(plan)
+    for i, (a, b, name) in enumerate(plan):
+        if name != "sun+0" or n < 3: continue
+        before, after = plan[i - 1], plan[(i + 1) % n]
+        if before[2] is not None or after[2] is not None: continue
+        c = (a + b) / 2
+        rel = lambda s: (s - c + P / 2) % P - P / 2               # s relative to the sun, -P/2..P/2
+        ga, gb = rel(before[0]), rel(before[1]); fa, fb = rel(after[0]), rel(after[1])
+        d = max(0.0, fa + MARGIN - inner, -(gb - MARGIN) - inner)
+        if fb - MARGIN < outer + d or ga + MARGIN > -(outer + d): continue
+        for side in (-1, +1):
+            for kind, u in FLANK:
+                out.append((c + side * (k * u + d), kind, side, None))
+        out[-1] = out[-1][:3] + (dict(start=before[0] % P, end=after[1] % P, group="flanks", centre=c % P, shift=d,
+            log="moon flanks round the sun at %.1f: half the design each side, %.1f mm further out than "
+                "in the design, dash ends at %.1f and %.1f (faces %.1f-%.1f and %.1f-%.1f)"
+                % (c % P, d, (c - outer - d) % P, (c + outer + d) % P, before[0] % P, before[1] % P, after[0] % P, after[1] % P)),)
+    return out
 
 def count_islands(kind):
     return 2 if kind == "sun" else 1     # the sun's crescent is separate from its rays
