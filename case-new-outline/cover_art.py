@@ -110,6 +110,65 @@ def dragon_simplified(raw, s, speck=(0.65, 5.0), pile=(25.0, -1.7), hole_fill=0.
         out.append(Polygon(p.exterior, holes))
     return unary_union(out).buffer(0).simplify(0.01)
 
+# ---------------------------------------------------------------- mushroom house
+MUSHROOM_JSON = os.path.join(HERE, "mushroom_art.json")   # mushroom_house.png, traced
+
+def mushroom_raw():
+    """2026-11-28: the mushroom house with two sleeping sheep (mushroom_house.png, traced by
+    trace_art.py at 100 mm wide with no dilation), centred, v up. Ink is the drawing's black:
+    its lines, the sheep's faces, ears and legs."""
+    return even_odd(json.load(open(MUSHROOM_JSON))["loops"])
+
+def fit_corner(outline, raw, width, margin=6.0, toward=(1, -1)):
+    """2026-11-28: the scale that makes the drawing `width` mm wide, and the centre that
+    tucks it as far into one corner of the lid as it goes while its ink (not its box) stays
+    `margin` inside the edge. toward (+1, -1) is the right-hand, front corner: x right, y
+    towards the back."""
+    s = width / (raw.bounds[2] - raw.bounds[0])
+    h = affinity.scale(raw, s, s, origin=(0, 0)).buffer(0.2).simplify(0.05)
+    room = prep(outline.buffer(-margin, join_style=1))
+    x0, y0, x1, y1 = outline.bounds; bx0, by0, bx1, by1 = h.bounds
+    tx, ty = toward
+    ok = lambda cx, cy: room.contains(affinity.translate(h, cx, cy))
+    xs = np.arange(x1 - bx1, x0 - bx0, -1.0) if tx > 0 else np.arange(x0 - bx0, x1 - bx1, 1.0)
+    ys = np.arange(y0 - by0, y1 - by1, 1.0) if ty < 0 else np.arange(y1 - by1, y0 - by0, -1.0)
+    best = None                          # (how far into the corner, cx, cy)
+    for cx in xs:                        # coarse, 1 mm steps: for each x from the corner side
+        for cy in ys:                    # inwards, the first y from the corner side that fits
+            if ok(cx, cy):
+                v = tx * cx + ty * cy
+                if best is None or v > best[0]: best = (v, cx, cy)
+                break
+        if best and tx * cx < best[0] - ty * ys[0] - 30: break   # 30 mm past the best: done
+    assert best, "drawing doesn't fit at %.1f mm wide" % width
+    _, cx, cy = best
+    step = 0.25                          # fine: slide into the corner while it still fits
+    for _ in range(2):
+        while ok(cx + tx * step, cy): cx += tx * step
+        while ok(cx, cy + ty * step): cy += ty * step
+    return s, cx, cy
+
+def relief_printable(raw, s, stroke_min=0.45, gap_min=0.5, widen=0.12, speck=0.05):
+    """The drawing at scale s (still centred on 0), made printable as a raised relief on a
+    top surface, where the ink stands up and the paper is the lid:
+    - specks of ink under speck mm2 are dropped;
+    - any part of a stroke thinner than stroke_min (the tapered ends of the door planks,
+      grass and leaves) is thickened, so it prints as a wall rather than vanishing;
+    - any white narrower than gap_min that lies within the drawing (the sheep's closed eyes
+      and the line under their chins, ~0.3 mm drawn) is widened by `widen` each side, so
+      the groove survives instead of filling in."""
+    g = drop_small(affinity.scale(raw, s, s, origin=(0, 0)).buffer(0), speck)
+    r = stroke_min / 2
+    thin = g.difference(g.buffer(-r, join_style=1).buffer(r, join_style=1))
+    g = g.union(drop_small(thin, 0.03).buffer(0.1, join_style=1)).buffer(0)   # not the pixel steps along every edge
+    env = g.buffer(2.0, join_style=1).buffer(-2.0, join_style=1)      # the drawing's own outline
+    white = env.difference(g)
+    r = gap_min / 2
+    narrow = white.difference(white.buffer(-r, join_style=1).buffer(r, join_style=1))
+    narrow = drop_small(narrow, 0.15)      # grooves, not the sharp white corners where lines meet
+    g = g.difference(narrow.buffer(widen, join_style=1)).buffer(0)
+    return drop_small(g, speck).simplify(0.01)
+
 def _ellipse_like(h, shrink):
     """An ellipse on h's minimum rotated rectangle with h's area (x shrink), and its minor axis."""
     r = h.minimum_rotated_rectangle; c = list(r.exterior.coords)

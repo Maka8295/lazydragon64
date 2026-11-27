@@ -92,7 +92,19 @@ Each build takes about 10 minutes. Built 2026-11-14.
   - Print top-down: the drawing goes on the plate, like the case undersides, and nothing needs support.
   - About 72 g each, solid.
   - Use the same slicer settings as the no-dragon case project: Arachne, `filter_out_gap_fill`, Textured PEI.
+- **Alternative right lid, "Mushroom House"** (`cover/lazydragon64 Cover Right Mushroom House.step` / `.stl`, 2026-11-28):
+  - The same right lid, with the mushroom house and its two sleeping sheep raised 0.6 mm on the top instead of the engraved dragon.
+  - The drawing is small, 70 × 43 mm (about half the lid's width), and sits in the front corner at the outer end, 6 mm in from the right and front edges; the rest of the top is plain. `COVER_MUSHROOM_W` sets its width, and `COVER_MUSHROOM_W=0` makes it as large as fits and centres it, like the dragon (135 × 82 mm).
+  - It reads upright from the front of the keyboard.
+  - It was made printable:
+    - every line is at least 0.45 mm wide (at this size most of the drawn lines are thinner, so they are thickened to about 0.5 mm);
+    - the sheep's closed eyes and the lines under their chins are widened by 0.24 mm, to grooves about 0.45 mm wide (drawn they'd be 0.2 mm at this size and fill in);
+    - specks under 0.05 mm² are dropped.
+  - It is 14.9 mm tall and about 74 g, solid.
+  - **Print it top-up**, with the drawing facing up; it can't go on the plate like the engraved lids. Its ceiling then spans the key area, so turn on supports, tree style and on the build plate only. They stand inside the lid, under the ceiling, and nothing touches the drawing.
+  - Source: `case-new-outline/mushroom_house.png`, traced into `mushroom_art.json` with `python3 trace_art.py mushroom_house.png mushroom_art.json 100 0`.
 - **Rebuilding:** from `case-new-outline/`:
   `freecadcmd -c "exec(open('build_cover.py').read())"`
   (2D art and the chamfer offset in `cover_art.py`). It takes about 4 minutes.
+  - `COVER_RIGHT_ART=mushroom` builds only the Mushroom House right lid (about 3 minutes). Both builds need shapely (`python-shapely` on Arch).
   - `COVER_WINDOWS=1` puts back the raised gothic windows (from `window.png`, traced into `window_art.json`), 42 per lid on the straight runs of wall.

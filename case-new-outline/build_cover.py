@@ -22,6 +22,15 @@
 #   redrawn as a clean oval (cover_art.coins_redrawn). Each lid gets its own unmirrored copy.
 # Print each lid top-down: the drawing is then on the first layer, like the case undersides,
 # and nothing needs support.
+# 2026-11-28: COVER_RIGHT_ART=mushroom builds only an alternative right lid, "lazydragon64
+# Cover Right Mushroom House": the mushroom house with two sleeping sheep
+# (mushroom_house.png, traced into mushroom_art.json) embossed RELIEF_RAISE on the top and
+# made printable by cover_art.relief_printable. It is COVER_MUSHROOM_W mm wide (70, about
+# half the lid; feedback: smaller and down at the end looks cuter), tucked into the lid's
+# front corner at the outer end, COVER_MUSHROOM_MARGIN (6 mm) inside the edge
+# (cover_art.fit_corner). COVER_MUSHROOM_W=0 gives the first version: as large as fits
+# ART_MARGIN inside the edge, centred like the dragon. Raised art can't go on the plate, so that lid
+# prints top-up, with supports from the plate under its ceiling.
 import os, sys, time, json, math, re
 import FreeCAD as App, Part, Mesh
 from FreeCAD import Vector as V
@@ -29,6 +38,7 @@ HERE = os.path.expanduser("~/PCBs/lazydragon64/case-new-outline")
 sys.path.insert(0, HERE)
 import importlib, cover_art; importlib.reload(cover_art)
 from cover_art import polys, window, dragon_raw, fit_dragon, dragon_simplified, coins_redrawn, window_layout, mitred_offset
+from cover_art import mushroom_raw, relief_printable, fit_corner
 from shapely.geometry import Polygon, box
 from shapely.ops import unary_union
 from shapely import affinity
@@ -53,6 +63,11 @@ WINDOWS = os.environ.get("COVER_WINDOWS", "0") == "1"
 WIN_H = Z_TOP - CHAMFER - WIN_TOP_GAP - (Z_RIM + WIN_BOTTOM)
 WIN_GAP, WIN_RAISE, WIN_EMBED = 2.4, 0.8, 0.3
 ART_DEPTH, ART_MARGIN = 0.6, 3.0
+RIGHT_ART = os.environ.get("COVER_RIGHT_ART", "dragon")
+assert RIGHT_ART in ("dragon", "mushroom"), "COVER_RIGHT_ART must be dragon or mushroom"
+RELIEF_RAISE, RELIEF_EMBED = 0.6, 0.3      # embossed art: height above the top, and into it
+MUSHROOM_W = float(os.environ.get("COVER_MUSHROOM_W", "70"))
+MUSHROOM_MARGIN = float(os.environ.get("COVER_MUSHROOM_MARGIN", "6.0"))
 os.makedirs(OUT, exist_ok=True)
 t0 = time.time()
 
@@ -170,9 +185,32 @@ def engrave(shape, outline, tag):
     assert len(res.Solids) == 1 and res.isValid()
     return res, art
 
+def emboss(shape, outline, tag):
+    raw = mushroom_raw()
+    if MUSHROOM_W > 0:      # the right lid's outer end is its +x side, the front is -y
+        s, cx, cy = fit_corner(outline, raw, MUSHROOM_W, MUSHROOM_MARGIN, toward=(1, -1))
+    else:
+        s, cx, cy = fit_dragon(outline, raw, ART_MARGIN)
+    art = affinity.translate(relief_printable(raw, s), cx, cy)
+    assert outline.buffer(-min(ART_MARGIN, MUSHROOM_MARGIN) + 0.5).contains(art)
+    tool = prism(art, Z_TOP - RELIEF_EMBED, Z_TOP + RELIEF_RAISE)
+    t1 = time.time()
+    res = shape.fuse(tool).removeSplitter()
+    log(tag, "mushroom house scale %.4f (%.1f x %.1f mm) centre (%.2f, %.2f), %d pieces, raised area %.1f mm2"
+        % (s, art.bounds[2] - art.bounds[0], art.bounds[3] - art.bounds[1], cx, cy, len(polys(art)), art.area),
+        "| valid", res.isValid(), "solids", len(res.Solids), "t %.1f" % (time.time() - t1))
+    assert len(res.Solids) == 1 and res.isValid()
+    return res, art
+
 right = left.mirror(V(0, 0, 0), V(1, 0, 0))     # the right case is the left one mirrored in x = 0
-left, art_l = engrave(left, O, "left")
-right, art_r = engrave(right, affinity.scale(O, -1, 1, origin=(0, 0)), "right")
+OR = affinity.scale(O, -1, 1, origin=(0, 0))
+if RIGHT_ART == "mushroom":
+    right, art_r = emboss(right, OR, "right")
+    outputs = [("Right Mushroom House", right)]
+else:
+    left, art_l = engrave(left, O, "left")
+    right, art_r = engrave(right, OR, "right")
+    outputs = [("Left", left), ("Right", right)]
 
 # ---- export, with the same mesh checks as the case builds ------------------------------------
 def stats(me):
@@ -181,7 +219,7 @@ def stats(me):
         len(me.getSeparateComponents()), me.CountFacets, me.Volume)
 def good(me):
     return me.isSolid() and not me.hasNonManifolds() and len(me.getSelfIntersections()) == 0 and len(me.getSeparateComponents()) == 1
-for tag, shape in (("Left", left), ("Right", right)):
+for tag, shape in outputs:
     out = os.path.join(OUT, "lazydragon64 Cover " + tag)
     shape.exportStep(out + ".step")
     best = None
