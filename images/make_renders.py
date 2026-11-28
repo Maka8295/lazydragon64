@@ -3,13 +3,13 @@
 
   python3 images/make_renders.py [name ...]      # all, or only the named renders
 
-PCB and plates: their own KiCad boards. Cases, lids and the assembly: a temporary board
+PCB and plate: their own KiCad boards. Cases, lids and the assembly: a temporary board
 whose one footprint carries the STEP models (as case-new-outline/build_assembly.py does).
 KiCad frames its camera on the board, so for a model on its own the board is drawn as the
 model's cavity shrunk 2 mm (with 2.25 mm holes for the screw recesses, so nothing of it shows) and buried inside the model:
 in the case floor (case Z -3.3 to -1.7, clear of the 0.6 mm engraving and the screw
 recesses) or in the lid's top (Z 27.1 to 28.7, under the 0.6 mm engraving).
-Needs shapely, and the STEP files from case-final/, marika cases/ and case-new-outline/.
+Needs shapely, and the STEP files from case-final/ and case-new-outline/.
 """
 import os, sys, json, subprocess, tempfile, shutil, uuid
 from shapely.geometry import Polygon, Point
@@ -121,21 +121,17 @@ def jobs(tmp):
     I = lambda n: os.path.join(HERE, n)
     pcb = os.path.join(PROJ, "lazydragon64.kicad_pcb")
     plate = os.path.join(PROJ, "plate", "Lucca58 Stagger Plate.kicad_pcb")
-    marika_plate = os.path.join(PROJ, "plate", "marikaplate.kicad_pcb")
     cl = os.path.join(CF, "chamfer", "lazydragon64 Case Left Chamfer.step")
     cr = os.path.join(CF, "chamfer", "lazydragon64 Case Right Chamfer.step")
-    ml = os.path.join(PROJ, "marika cases", "lazydragon64 Marika Case Left.step")
     lid_l = os.path.join(CF, "cover", "lazydragon64 Cover Left.step")
     return {
         "pcb-top": lambda: render(pcb, I("pcb-top.png"), side="top", zoom=0.95),
         "pcb-bottom": lambda: render(pcb, I("pcb-bottom.png"), side="bottom", zoom=0.95),
         "pcb-angle": lambda: render(pcb, I("pcb-angle.png"), rotate=ISO_FL, zoom=0.95),
         "plate": lambda: render(plate, I("plate.png"), rotate=ISO_FL, zoom=0.95),
-        "plate-marika": lambda: render(marika_plate, I("plate-marika.png"), rotate=ISO_FL, zoom=0.95),
         "case-left": lambda: render(scene_board(tmp, "case_l", [(cl, 0)]), I("case-left.png"), rotate=ISO_FL, zoom=0.9),
         "case-right": lambda: render(scene_board(tmp, "case_r", [(cr, 0)], mirror=True), I("case-right.png"), rotate=ISO_FR, zoom=0.9),
         "case-bottom": lambda: render(scene_board(tmp, "case_b", [(cl, 0)]), I("case-bottom.png"), side="bottom", zoom=0.9),
-        "case-marika": lambda: render(scene_board(tmp, "case_m", [(ml, 0)]), I("case-marika.png"), rotate=ISO_FL, zoom=0.9),
         "cover": lambda: render(scene_board(tmp, "lid", [(lid_l, 0)], z_board=27.1), I("cover.png"), rotate=ISO_FL, zoom=0.9),
         "cover-on-case": lambda: render(scene_board(tmp, "lid_case", [(cl, 0), (lid_l, 0)]), I("cover-on-case.png"), rotate=ISO_FL, zoom=0.85),
         "assembly": lambda: render(assembly_board(tmp, cl), I("assembly.png"), rotate=ISO_FL, zoom=0.9),
